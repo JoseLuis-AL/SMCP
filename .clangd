@@ -1,0 +1,21 @@
+# Configuracion de clangd para el proyecto (Zed y cualquier otro editor con LSP).
+# La base de compilacion la genera CMake con el preset ninja-debug.
+CompileFlags:
+  CompilationDatabase: build/ninja-debug
+  # cl.exe en compile_commands.json: clangd entra en modo clang-cl y localiza
+  # solo el toolset de MSVC y el Windows SDK instalados (no hace falta
+  # --query-driver). Se quitan las opciones que clang-cl no entiende.
+  Remove:
+    - /MP
+    - -MP
+    - /Zc:__cplusplus*
+  Add:
+    - -Wno-unknown-argument
+    - -Wno-unused-command-line-argument
+    - -Wno-microsoft-include
+    - -ferror-limit=0
+
+Diagnostics:
+  UnusedIncludes: None
+  Suppress:
+    - attributes_misplaced   # __declspec en cabeceras del SDK Spinnaker que clang no acepta

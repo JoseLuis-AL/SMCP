@@ -1,0 +1,36 @@
+{
+  // Configuracion del proyecto para Zed. Requiere haber configurado antes
+  // el preset ninja-debug (genera build/ninja-debug/compile_commands.json).
+  "languages": {
+    "C++": {
+      "tab_size": 4,
+      "hard_tabs": true,
+      "formatter": "language_server",
+      "format_on_save": "off"
+    },
+    "C": {
+      "tab_size": 4,
+      "hard_tabs": true
+    },
+    "JSON": { "tab_size": 2, "hard_tabs": false },
+    "CMake": { "tab_size": 4, "hard_tabs": false }
+  },
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "arguments": [
+          "--compile-commands-dir=build/ninja-debug",
+          "--background-index",
+          "--header-insertion=never",
+          "--completion-style=detailed",
+          "--log=error"
+        ]
+      }
+    }
+  },
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/build",
+    "**/.vs"
+  ]
+}

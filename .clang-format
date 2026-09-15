@@ -1,0 +1,48 @@
+# Estilo dominante del codigo: tabuladores, llaves Allman, punteros a la izquierda.
+# Coherente con .editorconfig (tab = 4). No reformatear archivos enteros sin motivo.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++17
+
+UseTab: Always
+TabWidth: 4
+IndentWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 120
+
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+
+NamespaceIndentation: All
+IndentCaseLabels: true
+IndentPPDirectives: None
+AccessModifierOffset: -4
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+AlignTrailingComments: true
+AlignConsecutiveAssignments: None
+
+BinPackArguments: true
+BinPackParameters: true
+BreakConstructorInitializers: AfterColon
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+Cpp11BracedListStyle: false
+SpaceBeforeCpp11BracedList: false
+SpacesInContainerLiterals: false
+
+SortIncludes: Never
+FixNamespaceComments: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 2
+ReflowComments: false
+...

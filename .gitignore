@@ -6,8 +6,9 @@ CMakeUserPresets.json
 CMakeCache.txt
 CMakeFiles/
 compile_commands.json
+.cache/
 
-# --- Visual Studio ---
+# --- Visual Studio ("Abrir carpeta") ---
 .vs/
 *.user
 *.suo
@@ -15,23 +16,8 @@ compile_commands.json
 *.VC.opendb
 *.sln.docstates
 *.DotSettings.user
-x64/
-x86/
-Debug/
-Release/
-GeneratedFiles/
-*.qtvscr
-*.tlog
-
-# --- Qt / qmake (legado) ---
-.qmake.stash
-moc_*.cpp
-qrc_*.cpp
-ui_*.h
-*.pro.user*
 
 # --- Binarios y símbolos ---
-bin/
 *.exe
 *.dll
 *.lib
