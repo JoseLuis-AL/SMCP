@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39,7 +40,7 @@ public:
 	ImageLabel(QWidget* parent = 0, Qt::WindowFlags flags = 0);
 	~ImageLabel() override;
 
-	inline void clear() { _pixmap = QPixmap(); update(); }
+	inline void Clear() { _pixmap = QPixmap(); update(); }
 	inline const QPixmap* pixmap() const { return &_pixmap; }
 	inline void setPixmap(const QPixmap& pixmap) { _pixmap = pixmap; update(); }
 

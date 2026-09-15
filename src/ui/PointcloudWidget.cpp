@@ -9,7 +9,7 @@
 #include <QDebug>
 
 #include "app/Application.h"
-#include "core/structured_light.h"
+#include "core/StructuredLight.h"
 
 namespace smcp
 {
@@ -18,7 +18,7 @@ namespace smcp
 //  Shaders (GLSL 120 - compatible with OpenGL 2.1 / ES 2.0)
 // ---------------------------------------------------------------------------
 
-static const char* vertexShaderSource =
+static const char* Vertex_Shader_Source =
 "#version 120\n"
 "attribute vec3 a_position;\n"
 "attribute vec3 a_color;\n"
@@ -30,7 +30,7 @@ static const char* vertexShaderSource =
 "    v_color      = a_color;\n"
 "}\n";
 
-static const char* fragmentShaderSource =
+static const char* Fragment_Shader_Source =
 "#version 120\n"
 "varying vec3 v_color;\n"
 "void main() {\n"
@@ -77,17 +77,17 @@ void PointcloudWidget::initializeGL()
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glEnable(GL_DEPTH_TEST);
 
-	buildShaders();
+	BuildShaders();
 	_vbo.create();
 }
 
-void PointcloudWidget::buildShaders()
+void PointcloudWidget::BuildShaders()
 {
-	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, vertexShaderSource))
+	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, Vertex_Shader_Source))
 	{
 		qWarning() << "PointcloudWidget: vertex shader compilation failed:" << _shaderProgram.log();
 	}
-	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, fragmentShaderSource))
+	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, Fragment_Shader_Source))
 	{
 		qWarning() << "PointcloudWidget: fragment shader compilation failed:" << _shaderProgram.log();
 	}
@@ -107,7 +107,7 @@ void PointcloudWidget::buildShaders()
 
 void PointcloudWidget::loadPointcloud()
 {
-	scan3d::Pointcloud const& pointcloud = APP->pointcloud;
+	Scan3d::Pointcloud const& pointcloud = APP->pointcloud;
 
 	// Guard: need both points and colors
 	if (!pointcloud.points.data || !pointcloud.colors.data)
@@ -135,7 +135,7 @@ void PointcloudWidget::loadPointcloud()
 		for (int c = 0; c < cols; ++c)
 		{
 			const cv::Vec3f& pt = ptRow[c];
-			if (sl::INVALID(pt))
+			if (StructuredLight::Invalid(pt))
 			{
 				continue;
 			}
@@ -172,7 +172,7 @@ void PointcloudWidget::loadPointcloud()
 		for (int c = 0; c < cols; ++c)
 		{
 			const cv::Vec3f& pt = ptRow[c];
-			if (sl::INVALID(pt))
+			if (StructuredLight::Invalid(pt))
 			{
 				continue;
 			}
@@ -244,7 +244,7 @@ void PointcloudWidget::resizeGL(int w, int h)
 //  Render
 // ---------------------------------------------------------------------------
 
-void PointcloudWidget::updateViewMatrix()
+void PointcloudWidget::UpdateViewMatrix()
 {
 	_view.setToIdentity();
 	_view.translate(0.0f, 0.0f, -_distance);
@@ -273,7 +273,7 @@ void PointcloudWidget::paintGL()
 	_projection.setToIdentity();
 	_projection.perspective(45.0f, aspect, nearPlane, farPlane);
 
-	updateViewMatrix();
+	UpdateViewMatrix();
 
 	QMatrix4x4 mvp = _projection * _view;
 

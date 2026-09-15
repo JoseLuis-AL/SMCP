@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2014, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -41,7 +42,7 @@ public:
 	MainWindow(QWidget* parent = 0, Qt::WindowFlags flags = 0);
 	~MainWindow();
 
-	void update_current_image(QModelIndex current = QModelIndex());
+	void UpdateCurrentImage(QModelIndex current = QModelIndex());
 
 public slots:
 	//menu actions
@@ -106,13 +107,13 @@ public slots:
 	void show_message(const QString& message = QString()) const;
 
 private:
-	int get_current_set(void) const;
+	int GetCurrentSet(void) const;
 
-	enum class VIEW_TYPE { Image, Pattern, Projector, View3D };
-	VIEW_TYPE  current_view_type;
+	enum class ViewType { Image, Pattern, Projector, View3D };
+	ViewType  currentViewType;
 
-	void set_view(VIEW_TYPE view);
-	void reset_view();
+	void SetView(ViewType view);
+	void ResetView();
 };
 
 } // namespace smcp

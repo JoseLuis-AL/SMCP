@@ -1,3 +1,31 @@
+/*
+Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the Brown University nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL DANIEL MORENO AND GABRIEL TAUBIN BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #pragma once
 
 #include <memory>
@@ -14,7 +42,7 @@
 #include <QString>
 #include <QVector3D>
 
-#include "core/pointcloud_ops.h"
+#include "core/PointcloudOps.h"
 
 class QListWidget;
 class QResizeEvent;
@@ -22,25 +50,42 @@ class QResizeEvent;
 namespace smcp
 {
 /// <summary>
-/// Visor OpenGL de varias nubes de puntos con camara orbital (arrastre izquierdo: rotar,
-/// central: desplazar, rueda: zoom) y una lista superpuesta para reordenar o quitar nubes.
-/// Lo usa el editor de nubes de puntos (PointcloudEditorDialog).
+/// OpenGL viewer for several point clouds with an orbital camera (left drag: rotate,
+/// middle: pan, wheel: zoom) and an overlay list to reorder or remove clouds.
+/// Used by the point cloud editor (PointcloudEditorDialog).
 /// </summary>
 class PointcloudPreviewWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
 	Q_OBJECT
 
 public:
+	/// Interleaved GPU buffer ready to upload, built without touching the widget.
+	struct PreparedPointcloud
+	{
+		std::vector<float> buffer;  ///< [x, y, z, r, g, b] per finite point, already in OpenGL coordinates.
+		int vertexCount = 0;
+		QVector3D bbMin;
+		QVector3D bbMax;
+		QString name;
+	};
+
 	explicit PointcloudPreviewWidget(QWidget* parent = nullptr);
 	~PointcloudPreviewWidget() override;
 
-	/// Anade una nube y devuelve su indice (-1 si esta vacia o no tiene puntos finitos).
-	/// Con `color_override` valido todos los puntos se pintan de ese color; si no, con su RGB.
-	/// La primera nube centra la camara en su caja envolvente.
-	int addPointcloud(const pointcloud::ColorCloudPtr& cloud, const QColor& color_override = QColor(),
+	/// Builds the GPU buffer of a cloud. Thread-safe, so large clouds can be prepared on a worker thread.
+	/// With a valid `colorOverride` every point is painted in that color; otherwise its own RGB is used.
+	static PreparedPointcloud PreparePointcloud(const Pointcloud::ColorCloud& cloud, const QColor& colorOverride = QColor(),
 		const QString& name = QString());
-	void removePointcloud(int index);
-	void clearPointclouds();
+
+	/// Adds a prepared cloud (taking ownership of its buffer) and returns its index, or -1 if it has no
+	/// finite points. The first cloud centers the camera on its bounding box.
+	int AddPreparedPointcloud(PreparedPointcloud&& prepared);
+
+	/// Prepares and adds a cloud on the calling thread; returns its index (-1 if empty or with no finite points).
+	int AddPointcloud(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride = QColor(),
+		const QString& name = QString());
+	void RemovePointcloud(int index);
+	void ClearPointclouds();
 
 protected:
 	void initializeGL() override;
@@ -59,26 +104,26 @@ private:
 		QOpenGLVertexArrayObject vao;
 		QOpenGLBuffer vbo;
 		int vertexCount = 0;
-		std::vector<float> pendingBuffer;  ///< [x, y, z, r, g, b] por vertice, pendiente de subir a la GPU.
+		std::vector<float> pendingBuffer;  ///< [x, y, z, r, g, b] per vertex, pending upload to the GPU.
 		bool pendingUpload = false;
 		QString name;
 
 		CloudEntry() : vbo(QOpenGLBuffer::VertexBuffer) {}
 	};
 
-	void buildShaders();
-	void updateViewMatrix();
-	void updateProjection(int w, int h);
+	void BuildShaders();
+	void UpdateViewMatrix();
+	void UpdateProjection(int w, int h);
 
-	void rebuildCloudList();
-	void repositionOverlay();
-	void onCloudListReordered();
+	void RebuildCloudList();
+	void RepositionOverlay();
+	void OnCloudListReordered();
 
-	void uploadEntry(CloudEntry& entry);
-	void destroyEntry(CloudEntry& entry);
+	void UploadEntry(CloudEntry& entry);
+	void DestroyEntry(CloudEntry& entry);
 
 	QOpenGLShaderProgram _shaderProgram;
-	std::vector<std::unique_ptr<CloudEntry>> _clouds;  ///< Se dibujan en orden: indice 0 primero.
+	std::vector<std::unique_ptr<CloudEntry>> _clouds;  ///< Drawn in order: index 0 first.
 	QListWidget* _cloudListWidget = nullptr;
 	int _cloudCounter = 0;
 

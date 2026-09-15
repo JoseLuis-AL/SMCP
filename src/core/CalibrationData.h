@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -36,36 +37,36 @@ namespace smcp
 class CalibrationData
 {
 public:
-    static const int CALIBRATION_FILE_VERSION = 1;
+    static const int Calibration_File_Version = 1;
 
     CalibrationData();
     ~CalibrationData();
 
-    void clear(void);
+    void Clear(void);
 
-    bool is_valid(void) const;
+    bool IsValid(void) const;
 
-    bool load_calibration(QString const& filename);
-    bool save_calibration(QString const& filename);
+    bool LoadCalibration(QString const& filename);
+    bool SaveCalibration(QString const& filename);
 
-    bool load_calibration_yml(QString const& filename);
-    bool save_calibration_yml(QString const& filename);
+    bool LoadCalibrationYml(QString const& filename);
+    bool SaveCalibrationYml(QString const& filename);
 
-    bool save_calibration_matlab(QString const& filename);
+    bool SaveCalibrationMatlab(QString const& filename);
 
-    void display(std::ostream & stream = std::cout) const;
+    void Display(std::ostream & stream = std::cout) const;
 
     //data
-    cv::Mat cam_K;
-    cv::Mat cam_kc;
-    cv::Mat proj_K;
-    cv::Mat proj_kc;
+    cv::Mat camK;
+    cv::Mat camKc;
+    cv::Mat projK;
+    cv::Mat projKc;
     cv::Mat R;
     cv::Mat T;
 
-    double cam_error;
-    double proj_error;
-    double stereo_error;
+    double camError;
+    double projError;
+    double stereoError;
 
     QString filename;
 };

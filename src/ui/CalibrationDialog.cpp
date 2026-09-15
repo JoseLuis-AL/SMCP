@@ -38,7 +38,7 @@ CalibrationDialog::CalibrationDialog(QWidget * parent, Qt::WindowFlags flags):
 {
     setupUi(this);
 
-    calibration_updated();
+    calibrationUpdated();
 }
 
 CalibrationDialog::~CalibrationDialog()
@@ -47,29 +47,29 @@ CalibrationDialog::~CalibrationDialog()
 
 void CalibrationDialog::on_load_button_clicked(bool checked)
 {
-    if (APP->load_calibration())
+    if (APP->LoadCalibration())
     {
-        calibration_updated();
+        calibrationUpdated();
     }
 }
 
 void CalibrationDialog::on_save_button_clicked(bool checked)
 {
-    if (APP->save_calibration())
+    if (APP->SaveCalibration())
     {
-        calibration_updated();
+        calibrationUpdated();
     }
 }
 
-void CalibrationDialog::calibration_updated(void)
+void CalibrationDialog::calibrationUpdated(void)
 {
     CalibrationData const& calib = APP->calib;
     file_line->setText(calib.filename);
 
-    if (calib.is_valid())
+    if (calib.IsValid())
     {
         std::stringstream stream;
-        calib.display(stream);
+        calib.Display(stream);
         message_text->setText(QString::fromStdString(stream.str()));
     }
     else

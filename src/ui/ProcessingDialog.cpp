@@ -44,7 +44,7 @@ ProcessingDialog::~ProcessingDialog()
 {
 }
 
-void ProcessingDialog::reset(void)
+void ProcessingDialog::Reset(void)
 {
     progress_bar->setMaximum(0);
     current_message_label->clear();
@@ -53,7 +53,7 @@ void ProcessingDialog::reset(void)
     _cancel = false;
 }
 
-void ProcessingDialog::finish(void)
+void ProcessingDialog::Finish(void)
 {
     //progress_bar->setValue(_total);
     close_cancel_button->setText("Close");
@@ -68,11 +68,11 @@ void ProcessingDialog::on_close_cancel_button_clicked(bool checked)
     else if (!_cancel)
     {
         _cancel = true;
-        message("CANCEL: waiting the current operation to finish (might take a little)");
+        Message("CANCEL: waiting the current operation to finish (might take a little)");
     }
 }
 
-void ProcessingDialog::message(const QString & text)
+void ProcessingDialog::Message(const QString & text)
 {
     message_text->append(text);
 }

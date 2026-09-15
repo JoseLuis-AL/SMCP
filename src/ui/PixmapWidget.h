@@ -1,3 +1,31 @@
+/*
+Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the Brown University nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL DANIEL MORENO AND GABRIEL TAUBIN BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #pragma once
 
 // Qt.
@@ -15,7 +43,7 @@ namespace smcp
 /// avoids redundant resampling on every repaint.
 /// </summary>
 /// <remarks>
-/// Designed as a drop-in replacement for ImageLabel. All cv::Mat to QPixmap conversions are self-contained (no external io_util dependency) and use
+/// Designed as a drop-in replacement for ImageLabel. All cv::Mat to QPixmap conversions are self-contained (no external IoUtil dependency) and use
 /// vectorised cv::cvtColor instead of manual pixel loops. The scaled pixmap is cached and only recomputed when the source image or the widget size
 /// changes, eliminating the main bottleneck of the original implementation. Thread safety: setImage(cv::Mat) and setImage(QPixmap) are safe to call
 /// from any thread; the actual pixel data is converted immediately under a mutex and the GUI is updated asynchronously via QWidget::update().
@@ -55,7 +83,7 @@ public:
 	/// <summary>
 	/// Clears the display and invalidates the scale cache.
 	/// </summary>
-	void clear();
+	void Clear();
 
 protected:
 	/// <summary>
@@ -93,10 +121,10 @@ private:
 
 	/* ATTRIBUTES ============================================================================== */
 
-	QPixmap current_pixmap;		///< Unscaled source pixmap (full resolution).
-	QPixmap cached_scaled;		///< Scaled pixmap at last_cached_size dimensions.
-	QSize   last_cached_size;	///< Widget size when cached_scaled was computed.
-	bool    cache_valid;		///< True when cached_scaled is usable for the current frame.
-	QMutex  mutex;				///< Guards current_pixmap for thread-safe setImage calls.
+	QPixmap currentPixmap;		///< Unscaled source pixmap (full resolution).
+	QPixmap cachedScaled;		///< Scaled pixmap at lastCachedSize dimensions.
+	QSize   lastCachedSize;	///< Widget size when cachedScaled was computed.
+	bool    cacheValid;		///< True when cachedScaled is usable for the current frame.
+	QMutex  mutex;				///< Guards currentPixmap for thread-safe setImage calls.
 };
 }

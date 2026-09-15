@@ -1,3 +1,31 @@
+/*
+Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the Brown University nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL DANIEL MORENO AND GABRIEL TAUBIN BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #pragma once
 
 // UI.
@@ -40,21 +68,21 @@ public slots:
 
 	// Preview.
 	void _on_new_projector_image(QPixmap image) const;
-	void _on_new_camera_frame(const QPixmap& new_frame, const QString& gray_stats) const;
+	void _on_new_camera_frame(const QPixmap& newFrame, const QString& grayStats) const;
 
 	// Alignment mode.
-	void on_alignment_mode_check_stateChanged(int new_state);
+	void on_alignment_mode_check_stateChanged(int newState);
 
 	// Camera settings.
 	void on_camera_combo_currentIndexChanged(int index);
-	void on_camera_black_level_spin_valueChanged(double new_value);
-	void on_camera_exposure_spin_valueChanged(double new_value);
-	void on_camera_gain_spin_valueChanged(double new_value);
-	void on_camera_gamma_spin_valueChanged(double new_value);
+	void on_camera_black_level_spin_valueChanged(double newValue);
+	void on_camera_exposure_spin_valueChanged(double newValue);
+	void on_camera_gain_spin_valueChanged(double newValue);
+	void on_camera_gamma_spin_valueChanged(double newValue);
 	void _on_new_camera_settings(const CameraSettings& settings) const;
 
 	void _on_image_stored();
-	void _on_image_saved(int total_images_to_save, int current_image_saved) const;
+	void _on_image_saved(int totalImagesToSave, int currentImageSaved) const;
 	void _on_all_images_saved();
 
 	// Capture.
@@ -62,16 +90,16 @@ public slots:
 
 	// Camera signals.
 signals:
-	void onNewCameraBlackLevelSignal(double new_value);
-	void onNewCameraExposureTimeSignal(double new_value);
-	void onNewCameraGainSignal(double new_value);
-	void onNewCameraGammaSignal(double new_value);
+	void onNewCameraBlackLevelSignal(double newValue);
+	void onNewCameraExposureTimeSignal(double newValue);
+	void onNewCameraGainSignal(double newValue);
+	void onNewCameraGammaSignal(double newValue);
 
 	// Alignment signals.
-	void _on_alignment_signal(bool is_align_mode_active);
+	void _on_alignment_signal(bool isAlignModeActive);
 
 	// Image saving signals.
-	void startCaptureSignal(int n_pattern);
+	void startCaptureSignal(int nPattern);
 	void endCaptureSignal();
 	void needStoreImageSignal(const QString& filename);
 
@@ -79,43 +107,43 @@ private:
 
 	/* METHODS ================================================================================= */
 	// Init.
-	void init_spinnaker();
-	void init_signals();
-	void init_controls() const;
+	void InitSpinnaker();
+	void InitSignals();
+	void InitControls() const;
 
 	// Camera.
-	void start_camera();
-	void stop_camera();
-	void setup_camera_thread();
-	void update_camera_combo();
+	void StartCamera();
+	void StopCamera();
+	void SetupCameraThread();
+	void UpdateCameraCombo();
 
 	// Projector.
-	int update_screen_combo() const;
+	int UpdateScreenCombo() const;
 
 	// Utilities.
-	static void wait_time(int milliseconds);
-	void enable_controls() const;
-	void disable_controls() const;
+	static void WaitTime(int milliseconds);
+	void EnableControls() const;
+	void DisableControls() const;
 
 	/* ATTRIBUTES ============================================================================== */
 	// Projector.
-	ProjectorWidget projector_widget;
+	ProjectorWidget projectorWidget;
 
 	// Camera [Spinnaker].
-	Spinnaker::SystemPtr spinnaker_system_ptr;
-	Spinnaker::CameraPtr camera_ptr;
-	Spinnaker::CameraList camera_list;
+	Spinnaker::SystemPtr spinnakerSystemPtr;
+	Spinnaker::CameraPtr cameraPtr;
+	Spinnaker::CameraList cameraList;
 
-	QThread camera_thread;
-	CameraWorker* camera_worker;
-	QString camera_serial_number;
+	QThread cameraThread;
+	CameraWorker* cameraWorker;
+	QString cameraSerialNumber;
 
-	int camera_idx{ -1 };
-	int n_cameras{ 0 };
+	int cameraIdx{ -1 };
+	int nCameras{ 0 };
 
 	// Image processing.
-	bool is_storing_image{ false };
-	bool is_saving_image{ false };
+	bool isStoringImage{ false };
+	bool isSavingImage{ false };
 
 	// Working directory.
 	QString session;

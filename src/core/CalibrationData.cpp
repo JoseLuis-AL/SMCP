@@ -36,10 +36,10 @@ namespace smcp
 {
 
 CalibrationData::CalibrationData() :
-    cam_K(), cam_kc(),
-    proj_K(), proj_kc(),
+    camK(), camKc(),
+    projK(), projKc(),
     R(), T(),
-    cam_error(0.0), proj_error(0.0), stereo_error(0.0),
+    camError(0.0), projError(0.0), stereoError(0.0),
     filename()
 {
 }
@@ -48,44 +48,44 @@ CalibrationData::~CalibrationData()
 {
 }
 
-void CalibrationData::clear(void)
+void CalibrationData::Clear(void)
 {
-    cam_K = cv::Mat();
-    cam_kc = cv::Mat();
-    proj_K = cv::Mat();
-    proj_kc = cv::Mat();
+    camK = cv::Mat();
+    camKc = cv::Mat();
+    projK = cv::Mat();
+    projKc = cv::Mat();
     R = cv::Mat();
     T = cv::Mat();
     filename = QString();
 }
 
-bool CalibrationData::is_valid(void) const
+bool CalibrationData::IsValid(void) const
 {
-    return (cam_K.data && cam_kc.data && proj_K.data && proj_kc.data && R.data && T.data);
+    return (camK.data && camKc.data && projK.data && projKc.data && R.data && T.data);
 }
 
-bool CalibrationData::load_calibration(QString const& filename)
-{
-    QFileInfo info(filename);
-    QString type = info.suffix();
-
-    if (type=="yml") {return load_calibration_yml(filename);}
-
-    return false;
-}
-
-bool CalibrationData::save_calibration(QString const& filename)
+bool CalibrationData::LoadCalibration(QString const& filename)
 {
     QFileInfo info(filename);
     QString type = info.suffix();
 
-    if (type=="yml") {return save_calibration_yml(filename);}
-    if (type=="m"  ) {return save_calibration_matlab(filename);}
+    if (type=="yml") {return LoadCalibrationYml(filename);}
 
     return false;
 }
 
-bool CalibrationData::load_calibration_yml(QString const& filename)
+bool CalibrationData::SaveCalibration(QString const& filename)
+{
+    QFileInfo info(filename);
+    QString type = info.suffix();
+
+    if (type=="yml") {return SaveCalibrationYml(filename);}
+    if (type=="m"  ) {return SaveCalibrationMatlab(filename);}
+
+    return false;
+}
+
+bool CalibrationData::LoadCalibrationYml(QString const& filename)
 {
     cv::FileStorage fs(filename.toStdString(), cv::FileStorage::READ);
     if (!fs.isOpened())
@@ -93,16 +93,16 @@ bool CalibrationData::load_calibration_yml(QString const& filename)
         return false;
     }
 
-    fs["cam_K"] >> cam_K;
-    fs["cam_kc"] >> cam_kc;
-    fs["proj_K"] >> proj_K;
-    fs["proj_kc"] >> proj_kc;
+    fs["cam_K"] >> camK;
+    fs["cam_kc"] >> camKc;
+    fs["proj_K"] >> projK;
+    fs["proj_kc"] >> projKc;
     fs["R"] >> R;
     fs["T"] >> T;
 
-    fs["cam_error"] >> cam_error;
-    fs["proj_error"] >> proj_error;
-    fs["stereo_error"] >> stereo_error;
+    fs["cam_error"] >> camError;
+    fs["proj_error"] >> projError;
+    fs["stereo_error"] >> stereoError;
 
     fs.release();
 
@@ -111,7 +111,7 @@ bool CalibrationData::load_calibration_yml(QString const& filename)
     return true;
 }
 
-bool CalibrationData::save_calibration_yml(QString const& filename)
+bool CalibrationData::SaveCalibrationYml(QString const& filename)
 {
     cv::FileStorage fs(filename.toStdString(), cv::FileStorage::WRITE);
     if (!fs.isOpened())
@@ -119,12 +119,12 @@ bool CalibrationData::save_calibration_yml(QString const& filename)
         return false;
     }
 
-    fs << "cam_K" << cam_K << "cam_kc" << cam_kc
-       << "proj_K" << proj_K << "proj_kc" << proj_kc
+    fs << "cam_K" << camK << "cam_kc" << camKc
+       << "proj_K" << projK << "proj_kc" << projKc
        << "R" << R << "T" << T
-       << "cam_error" << cam_error
-       << "proj_error" << proj_error
-       << "stereo_error" << stereo_error
+       << "cam_error" << camError
+       << "proj_error" << projError
+       << "stereo_error" << stereoError
        ;
     fs.release();
 
@@ -133,7 +133,7 @@ bool CalibrationData::save_calibration_yml(QString const& filename)
     return true;
 }
 
-bool CalibrationData::save_calibration_matlab(QString const& filename)
+bool CalibrationData::SaveCalibrationMatlab(QString const& filename)
 {
     FILE * fp = fopen(qPrintable(filename), "w");
     if (!fp)
@@ -161,10 +161,10 @@ bool CalibrationData::save_calibration_matlab(QString const& filename)
         "%% Extrinsic parameters (position of projector wrt camera):\n"
         "om = [ %lf %lf %lf ]; %% Rotation vector\n"
         "T = [ %lf %lf %lf ]; %% Translation vector\n",
-        cam_K.at<double>(0,0), cam_K.at<double>(1,1), cam_K.at<double>(0,2), cam_K.at<double>(1,2), cam_K.at<double>(0,1),
-        cam_kc.at<double>(0,0), cam_kc.at<double>(0,1), cam_kc.at<double>(0,2), cam_kc.at<double>(0,3), cam_kc.at<double>(0,4), 
-        proj_K.at<double>(0,0), proj_K.at<double>(1,1), proj_K.at<double>(0,2), proj_K.at<double>(1,2), proj_K.at<double>(0,1),
-        proj_kc.at<double>(0,0), proj_kc.at<double>(0,1), proj_kc.at<double>(0,2), proj_kc.at<double>(0,3), proj_kc.at<double>(0,4),
+        camK.at<double>(0,0), camK.at<double>(1,1), camK.at<double>(0,2), camK.at<double>(1,2), camK.at<double>(0,1),
+        camKc.at<double>(0,0), camKc.at<double>(0,1), camKc.at<double>(0,2), camKc.at<double>(0,3), camKc.at<double>(0,4), 
+        projK.at<double>(0,0), projK.at<double>(1,1), projK.at<double>(0,2), projK.at<double>(1,2), projK.at<double>(0,1),
+        projKc.at<double>(0,0), projKc.at<double>(0,1), projKc.at<double>(0,2), projKc.at<double>(0,3), projKc.at<double>(0,4),
         rvec.at<double>(0,0), rvec.at<double>(1,0), rvec.at<double>(2,0), 
         T.at<double>(0,0), T.at<double>(1,0), T.at<double>(2,0)
         );
@@ -173,22 +173,22 @@ bool CalibrationData::save_calibration_matlab(QString const& filename)
     return true;
 }
 
-void CalibrationData::display(std::ostream & stream) const
+void CalibrationData::Display(std::ostream & stream) const
 {
     stream << "Camera Calib: " << std::endl
-        << " - reprojection error: " << cam_error << std::endl
-        << " - K:\n" << cam_K << std::endl
-        << " - kc: " << cam_kc << std::endl
+        << " - reprojection error: " << camError << std::endl
+        << " - K:\n" << camK << std::endl
+        << " - kc: " << camKc << std::endl
         ;
     stream << std::endl;
     stream << "Projector Calib: " << std::endl
-        << " - reprojection error: " << proj_error << std::endl
-        << " - K:\n" << proj_K << std::endl
-        << " - kc: " << proj_kc << std::endl
+        << " - reprojection error: " << projError << std::endl
+        << " - K:\n" << projK << std::endl
+        << " - kc: " << projKc << std::endl
         ;
     stream << std::endl;
     stream << "Stereo Calib: " << std::endl
-        << " - reprojection error: " << stereo_error << std::endl
+        << " - reprojection error: " << stereoError << std::endl
         << " - R:\n" << R << std::endl
         << " - T:\n" << T << std::endl
         ;

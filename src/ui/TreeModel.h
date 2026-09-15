@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -40,21 +41,21 @@ class TreeModel : public QAbstractItemModel
     public:
         Item();
 
-        inline unsigned id(void) const {return _id;}
+        inline unsigned Id(void) const {return _id;}
 
-        void clear(void);
-        bool insertRow(int row);
+        void Clear(void);
+        bool InsertRow(int row);
 
-        QVariant data(int role) const;
-        void setData(const QVariant & value, int role);
+        QVariant Data(int role) const;
+        void SetData(const QVariant & value, int role);
         
-        inline Item * parent(void) const {return _parent;}
-        inline void setParent(Item * parent) {_parent = parent;}
+        inline Item * Parent(void) const {return _parent;}
+        inline void SetParent(Item * parent) {_parent = parent;}
 
-        int childrenCount(void) const;
-        const Item * child(int index) const;
-        Item * child(int index);
-        int childRow(const Item * child) const;
+        int ChildrenCount(void) const;
+        const Item * Child(int index) const;
+        Item * Child(int index);
+        int ChildRow(const Item * child) const;
 
     private:
         unsigned            _id;
@@ -62,7 +63,7 @@ class TreeModel : public QAbstractItemModel
         QMap<int, QVariant> _data;
         QList<Item>         _children;
 
-        static unsigned next_id;
+        static unsigned nextId;
     };
 
 public:
@@ -82,17 +83,17 @@ public:
     inline Type rowCount(const QModelIndex & parent = QModelIndex()) const {return static_cast<Type>(rowCount(parent));}
 
     /* Editable Model members */
-    bool insertRow(int row, const QModelIndex & parent = QModelIndex());
+    bool InsertRow(int row, const QModelIndex & parent = QModelIndex());
     virtual bool setData(const QModelIndex & index, const QVariant & value, int role = Qt::EditRole);
 
     /* Item properties */
     virtual Qt::ItemFlags flags(const QModelIndex & index) const;
 
-    void clear(void);
+    void Clear(void);
 
 private:
-    Item * get_item(const QModelIndex & index);
-    const Item * get_item(const QModelIndex & index) const;
+    Item * GetItem(const QModelIndex & index);
+    const Item * GetItem(const QModelIndex & index) const;
 
 private:
     unsigned _columnCount;

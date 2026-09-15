@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,15 +43,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace smcp
 {
 
-namespace scan3d
+namespace Scan3d
 {
     class Pointcloud
     {
     public:
-        void clear(void);
-        void init_points(int rows, int cols);
-        void init_color(int rows, int cols);
-        void init_normals(int rows, int cols);
+        void Clear(void);
+        void InitPoints(int rows, int cols);
+        void InitColor(int rows, int cols);
+        void InitNormals(int rows, int cols);
 
         //data
         cv::Mat points;
@@ -58,30 +59,30 @@ namespace scan3d
         cv::Mat normals;
     };
 
-    void reconstruct_model(Pointcloud & pointcloud, CalibrationData const& calib, 
-            cv::Mat const& pattern_image, cv::Mat const& min_max_image, cv::Mat const& color_image,
-            cv::Size const& projector_size, int threshold, double max_dist, QWidget * parent_widget = NULL);
+    void ReconstructModel(Pointcloud & pointcloud, CalibrationData const& calib, 
+            cv::Mat const& patternImage, cv::Mat const& minMaxImage, cv::Mat const& colorImage,
+            cv::Size const& projectorSize, int threshold, double maxDist, QWidget * parentWidget = NULL);
 
-    void reconstruct_model_simple(Pointcloud & pointcloud, CalibrationData const& calib, 
-            cv::Mat const& pattern_image, cv::Mat const& min_max_image, cv::Mat const& color_image,
-            cv::Size const& projector_size, int threshold, double max_dist, QWidget * parent_widget = NULL);
+    void ReconstructModelSimple(Pointcloud & pointcloud, CalibrationData const& calib, 
+            cv::Mat const& patternImage, cv::Mat const& minMaxImage, cv::Mat const& colorImage,
+            cv::Size const& projectorSize, int threshold, double maxDist, QWidget * parentWidget = NULL);
 
-    void reconstruct_model_patch_center(Pointcloud & pointcloud, CalibrationData const& calib, 
-            cv::Mat const& pattern_image, cv::Mat const& min_max_image, cv::Mat const& color_image,
-            cv::Size const& projector_size, int threshold, double max_dist, QWidget * parent_widget = NULL);
+    void ReconstructModelPatchCenter(Pointcloud & pointcloud, CalibrationData const& calib, 
+            cv::Mat const& patternImage, cv::Mat const& minMaxImage, cv::Mat const& colorImage,
+            cv::Size const& projectorSize, int threshold, double maxDist, QWidget * parentWidget = NULL);
 
-    void triangulate_stereo(const cv::Mat & K1, const cv::Mat & kc1, const cv::Mat & K2, const cv::Mat & kc2, 
+    void TriangulateStereo(const cv::Mat & K1, const cv::Mat & kc1, const cv::Mat & K2, const cv::Mat & kc2, 
                             const cv::Mat & Rt, const cv::Mat & T, const cv::Point2d & p1, const cv::Point2d & p2, 
                             cv::Point3d & p3d, double * distance = NULL);
 
-    cv::Point3d approximate_ray_intersection(const cv::Point3d & v1, const cv::Point3d & q1,
+    cv::Point3d ApproximateRayIntersection(const cv::Point3d & v1, const cv::Point3d & q1,
                                         const cv::Point3d & v2, const cv::Point3d & q2,
-                                        double * distance = NULL, double * out_lambda1 = NULL, double * out_lambda2 = NULL);
+                                        double * distance = NULL, double * outLambda1 = NULL, double * outLambda2 = NULL);
 
-    void compute_normals(scan3d::Pointcloud & pointcloud);
+    void ComputeNormals(Scan3d::Pointcloud & pointcloud);
 
-    cv::Mat make_projector_view(cv::Mat const& pattern_image, cv::Mat const& min_max_image, cv::Mat const& color_image, 
-                                        cv::Size const& projector_size, int threshold);
+    cv::Mat MakeProjectorView(cv::Mat const& patternImage, cv::Mat const& minMaxImage, cv::Mat const& colorImage, 
+                                        cv::Size const& projectorSize, int threshold);
 };
 
 } // namespace smcp

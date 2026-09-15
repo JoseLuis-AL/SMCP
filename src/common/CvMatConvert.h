@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,24 +27,38 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #pragma once
+
+#include <QPixmap>
 #include <QImage>
-#include <opencv2/core/core.hpp>
-#include "core/scan3d.h"
+#include "opencv2/opencv.hpp"
 
-namespace smcp
+namespace smcp::CvMatConvert
 {
+/**
+ * Converts a cv::Mat image into a QPixmap.
+ * @param mat Image to convert.
+ * @return Image in QPixmap format.
+ */
+QPixmap ToQPixmap(const cv::Mat& mat);
 
-namespace io_util
-{
-    enum PlyFlags {PlyPoints = 0x00, PlyColors = 0x01, PlyNormals = 0x02, PlyBinary = 0x04, PlyPlane = 0x08, PlyFaces = 0x10, PlyTexture = 0x20};
-    
-    bool write_ply(const std::string & filename, scan3d::Pointcloud const& pointcloud, unsigned flags = PlyPoints);
+/**
+ * Converts a cv::Mat image into a QImage.
+ * @param mat Image to convert.
+ * @return Image in QImage format.
+ */
+QImage ToQImage(const cv::Mat& mat);
 
-    QImage qImage(const cv::Mat & image);
-    QImage qImageFromRGB(const cv::Mat & image);
-    QImage qImageFromGray(const cv::Mat & image);
+/**
+ * Converts an RGB image into a QImage.
+ * @param mat Image to convert.
+ * @return Image in QImage format.
+ */
+QImage ToQImageFromRGB(const cv::Mat& mat);
 
-    bool write_pgm(const cv::Mat & image, const char * basename);
-};
-
-} // namespace smcp
+/**
+ * Converts a grayscale image into a QImage.
+ * @param mat Image to convert.
+ * @return Image in QImage format.
+ */
+QImage ToQImageFromGray(const cv::Mat& mat);
+}

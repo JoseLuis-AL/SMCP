@@ -25,7 +25,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "core/structured_light.h"
+#include "core/StructuredLight.h"
 
 #include <iostream>
 #include <opencv2/highgui/highgui.hpp>
@@ -34,54 +34,54 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace smcp
 {
 
-namespace sl
+namespace StructuredLight
 {
-    const float PIXEL_UNCERTAIN = std::numeric_limits<float>::quiet_NaN();
-    const unsigned short BIT_UNCERTAIN = 0xffff;
+    const float Pixel_Uncertain = std::numeric_limits<float>::quiet_NaN();
+    const unsigned short Bit_Uncertain = 0xffff;
 };
 
-bool sl::decode_pattern(const std::vector<std::string> & images, cv::Mat & pattern_image, cv::Mat & min_max_image, cv::Size const& projector_size, unsigned flags, const cv::Mat & direct_light, unsigned m)
+bool StructuredLight::DecodePattern(const std::vector<std::string> & images, cv::Mat & patternImage, cv::Mat & minMaxImage, cv::Size const& projectorSize, unsigned flags, const cv::Mat & directLight, unsigned m)
 {
     bool binary   = (flags & GrayPatternDecode)!=GrayPatternDecode;
     bool robust   = (flags & RobustDecode)==RobustDecode;
 
-    std::cout << " --- decode_pattern START ---\n";
+    std::cout << " --- DecodePattern START ---\n";
 
     //delete previous data
-    pattern_image = cv::Mat();
-    min_max_image = cv::Mat();
+    patternImage = cv::Mat();
+    minMaxImage = cv::Mat();
     bool init = true;
 
     std::cout << "Decode: " << (binary?"Binary ":"Gray ")
                             << (robust?"Robust ":"") 
                             << std::endl;
 
-    int total_images = static_cast<int>(images.size());
-    int total_patterns = total_images/2 - 1;
-    int total_bits = total_patterns/2;
-    if (2+4*total_bits!=total_images)
+    int totalImages = static_cast<int>(images.size());
+    int totalPatterns = totalImages/2 - 1;
+    int totalBits = totalPatterns/2;
+    if (2+4*totalBits!=totalImages)
     {   //error
-        std::cout << "[sl::decode_pattern] ERROR: cannot detect pattern and bit count from image set.\n";
+        std::cout << "[StructuredLight::DecodePattern] ERROR: cannot detect pattern and bit count from image set.\n";
         return false;
     }
 
-    const unsigned bit_count[] = {0, static_cast<unsigned>(total_bits), static_cast<unsigned>(total_bits)};  //pattern bits
-    const unsigned set_size[]  = {1, static_cast<unsigned>(total_bits), static_cast<unsigned>(total_bits)};  //number of image pairs
-    const unsigned COUNT = 2*(set_size[0]+set_size[1]+set_size[2]); //total image count
-    const int pattern_offset[2] = {((1<<total_bits)-projector_size.width)/2, ((1<<total_bits)-projector_size.height)/2};
+    const unsigned bitCount[] = {0, static_cast<unsigned>(totalBits), static_cast<unsigned>(totalBits)};  //pattern bits
+    const unsigned setSize[]  = {1, static_cast<unsigned>(totalBits), static_cast<unsigned>(totalBits)};  //number of image pairs
+    const unsigned Count = 2*(setSize[0]+setSize[1]+setSize[2]); //total image count
+    const int patternOffset[2] = {((1<<totalBits)-projectorSize.width)/2, ((1<<totalBits)-projectorSize.height)/2};
 
-    if (images.size()<COUNT)
+    if (images.size()<Count)
     {   //error
-        std::cout << "Image list size does not match set size, please supply exactly " << COUNT << " image names.\n";
+        std::cout << "Image list size does not match set size, please supply exactly " << Count << " image names.\n";
         return false;
     }
 
     //load every image pair and compute the maximum, minimum, and bit code
     unsigned set = 0;
     unsigned current = 0;
-    for (unsigned t=0; t<COUNT; t+=2, current++)
+    for (unsigned t=0; t<Count; t+=2, current++)
     {
-        if (current==set_size[set])
+        if (current==setSize[set])
         {
             set++;
             current = 0;
@@ -92,18 +92,18 @@ bool sl::decode_pattern(const std::vector<std::string> & images, cv::Mat & patte
             continue;
         }
 
-        unsigned bit = bit_count[set] - current - 1; //current bit: from 0 to (bit_count[set]-1)
+        unsigned bit = bitCount[set] - current - 1; //current bit: from 0 to (bitCount[set]-1)
         unsigned channel = set - 1;
 
         //load images
-        const cv::Mat & gray_image1 = get_gray_image(images.at(t+0));
-        if (gray_image1.rows<1)
+        const cv::Mat & grayImage1 = GetGrayImage(images.at(t+0));
+        if (grayImage1.rows<1)
         {
             std::cout << "Failed to load " << images.at(t+0) << std::endl;
             return false;
         }
-        const cv::Mat & gray_image2 = get_gray_image(images.at(t+1));
-        if (gray_image2.rows<1)
+        const cv::Mat & grayImage2 = GetGrayImage(images.at(t+1));
+        if (grayImage2.rows<1)
         {
             std::cout << "Failed to load " << images.at(t+1) << std::endl;
             return false;
@@ -113,45 +113,45 @@ bool sl::decode_pattern(const std::vector<std::string> & images, cv::Mat & patte
         if (init)
         {
             //sanity check
-            if (gray_image1.size()!=gray_image2.size())
+            if (grayImage1.size()!=grayImage2.size())
             {   //different size
                 std::cout << " --> Initial images have different size: \n";
                 return false;
             }
-            if (robust && gray_image1.size()!=direct_light.size())
+            if (robust && grayImage1.size()!=directLight.size())
             {   //different size
                 std::cout << " --> Direct Component image has different size: \n";
                 return false;
             }
-            pattern_image = cv::Mat(gray_image1.size(), CV_32FC2);
-            min_max_image = cv::Mat(gray_image1.size(), CV_8UC2);
+            patternImage = cv::Mat(grayImage1.size(), CV_32FC2);
+            minMaxImage = cv::Mat(grayImage1.size(), CV_8UC2);
         }
 
         //sanity check
-        if (gray_image1.size()!=pattern_image.size())
+        if (grayImage1.size()!=patternImage.size())
         {   //different size
             std::cout << " --> Image 1 has different size, image pair " << t << " (skipped!)\n";
             continue;
         }
-        if (gray_image2.size()!=pattern_image.size())
+        if (grayImage2.size()!=patternImage.size())
         {   //different size
             std::cout << " --> Image 2 has different size, image pair " << t << " (skipped!)\n";
             continue;
         }
 
         //compare
-        for (int h=0; h<pattern_image.rows; h++)
+        for (int h=0; h<patternImage.rows; h++)
         {
-            const unsigned char * row1 = gray_image1.ptr<unsigned char>(h);
-            const unsigned char * row2 = gray_image2.ptr<unsigned char>(h);
-            const cv::Vec2b * row_light = (robust ? direct_light.ptr<cv::Vec2b>(h) : NULL);
-            cv::Vec2f * pattern_row = pattern_image.ptr<cv::Vec2f>(h);
-            cv::Vec2b * min_max_row = min_max_image.ptr<cv::Vec2b>(h);
+            const unsigned char * row1 = grayImage1.ptr<unsigned char>(h);
+            const unsigned char * row2 = grayImage2.ptr<unsigned char>(h);
+            const cv::Vec2b * rowLight = (robust ? directLight.ptr<cv::Vec2b>(h) : NULL);
+            cv::Vec2f * patternRow = patternImage.ptr<cv::Vec2f>(h);
+            cv::Vec2b * minMaxRow = minMaxImage.ptr<cv::Vec2b>(h);
 
-            for (int w=0; w<pattern_image.cols; w++)
+            for (int w=0; w<patternImage.cols; w++)
             {
-                cv::Vec2f & pattern = pattern_row[w];
-                cv::Vec2b & min_max = min_max_row[w];
+                cv::Vec2f & pattern = patternRow[w];
+                cv::Vec2b & minMax = minMaxRow[w];
                 unsigned char value1 = row1[w];
                 unsigned char value2 = row2[w];
 
@@ -162,13 +162,13 @@ bool sl::decode_pattern(const std::vector<std::string> & images, cv::Mat & patte
                 }
 
                 //min/max
-                if (init || value1<min_max[0] || value2<min_max[0])
+                if (init || value1<minMax[0] || value2<minMax[0])
                 {
-                    min_max[0] = (value1<value2?value1:value2);
+                    minMax[0] = (value1<value2?value1:value2);
                 }
-                if (init || value1>min_max[1] || value2>min_max[1])
+                if (init || value1>minMax[1] || value2>minMax[1])
                 {
-                    min_max[1] = (value1>value2?value1:value2);
+                    minMax[1] = (value1>value2?value1:value2);
                 }
                 
                 if (!robust)
@@ -180,13 +180,13 @@ bool sl::decode_pattern(const std::vector<std::string> & images, cv::Mat & patte
                 }
                 else
                 {   // [robust] pattern bit assignment
-                    if (row_light && (init || pattern[channel]!=PIXEL_UNCERTAIN))
+                    if (rowLight && (init || pattern[channel]!=Pixel_Uncertain))
                     {
-                        const cv::Vec2b & L = row_light[w];
-                        unsigned short p = get_robust_bit(value1, value2, L[0], L[1], m);
-                        if (p==BIT_UNCERTAIN)
+                        const cv::Vec2b & L = rowLight[w];
+                        unsigned short p = GetRobustBit(value1, value2, L[0], L[1], m);
+                        if (p==Bit_Uncertain)
                         {
-                            pattern[channel] = PIXEL_UNCERTAIN;
+                            pattern[channel] = Pixel_Uncertain;
                         }
                         else
                         {
@@ -203,19 +203,19 @@ bool sl::decode_pattern(const std::vector<std::string> & images, cv::Mat & patte
 
     if (!binary)
     {   //not binary... it must be gray code
-        convert_pattern(pattern_image, projector_size, pattern_offset, binary);
+        ConvertPattern(patternImage, projectorSize, patternOffset, binary);
     }
 
-    std::cout << " --- decode_pattern END ---\n";
+    std::cout << " --- DecodePattern END ---\n";
 
     return true;
 }
 
-unsigned short sl::get_robust_bit(unsigned value1, unsigned value2, unsigned Ld, unsigned Lg, unsigned m)
+unsigned short StructuredLight::GetRobustBit(unsigned value1, unsigned value2, unsigned Ld, unsigned Lg, unsigned m)
 {
     if (Ld < m)
     {
-        return BIT_UNCERTAIN;
+        return Bit_Uncertain;
     }
     if (Ld>Lg)
     {
@@ -229,16 +229,16 @@ unsigned short sl::get_robust_bit(unsigned value1, unsigned value2, unsigned Ld,
     {
         return 1;
     }
-    return BIT_UNCERTAIN;
+    return Bit_Uncertain;
 }
 
-void sl::convert_pattern(cv::Mat & pattern_image, cv::Size const& projector_size, const int offset[2], bool binary)
+void StructuredLight::ConvertPattern(cv::Mat & patternImage, cv::Size const& projectorSize, const int offset[2], bool binary)
 {
-    if (pattern_image.rows==0)
+    if (patternImage.rows==0)
     {   //no pattern image
         return;
     }
-    if (pattern_image.type()!=CV_32FC2)
+    if (patternImage.type()!=CV_32FC2)
     {
         return;
     }
@@ -252,44 +252,44 @@ void sl::convert_pattern(cv::Mat & pattern_image, cv::Size const& projector_size
         std::cout << "Converting gray code to binary\n";
     }
 
-    for (int h=0; h<pattern_image.rows; h++)
+    for (int h=0; h<patternImage.rows; h++)
     {
-        cv::Vec2f * pattern_row = pattern_image.ptr<cv::Vec2f>(h);
-        for (int w=0; w<pattern_image.cols; w++)
+        cv::Vec2f * patternRow = patternImage.ptr<cv::Vec2f>(h);
+        for (int w=0; w<patternImage.cols; w++)
         {
-            cv::Vec2f & pattern = pattern_row[w];
+            cv::Vec2f & pattern = patternRow[w];
             if (binary)
             {
-                if (!INVALID(pattern[0]))
+                if (!Invalid(pattern[0]))
                 {
                     int p = static_cast<int>(pattern[0]);
-                    pattern[0] = binaryToGray(p, offset[0]) + (pattern[0] - p);
+                    pattern[0] = BinaryToGray(p, offset[0]) + (pattern[0] - p);
                 }
-                if (!INVALID(pattern[1]))
+                if (!Invalid(pattern[1]))
                 {
                     int p = static_cast<int>(pattern[1]);
-                    pattern[1] = binaryToGray(p, offset[1]) + (pattern[1] - p);
+                    pattern[1] = BinaryToGray(p, offset[1]) + (pattern[1] - p);
                 }
             }
             else
             {
-                if (!INVALID(pattern[0]))
+                if (!Invalid(pattern[0]))
                 {
                     int p = static_cast<int>(pattern[0]);
-                    int code = grayToBinary(p, offset[0]);
+                    int code = GrayToBinary(p, offset[0]);
 
                     if (code<0) {code = 0;}
-                    else if (code>=projector_size.width) {code = projector_size.width - 1;}
+                    else if (code>=projectorSize.width) {code = projectorSize.width - 1;}
 
                     pattern[0] = code + (pattern[0] - p);
                 }
-                if (!INVALID(pattern[1]))
+                if (!Invalid(pattern[1]))
                 {
                     int p = static_cast<int>(pattern[1]);
-                    int code = grayToBinary(p, offset[1]);
+                    int code = GrayToBinary(p, offset[1]);
 
                     if (code<0) {code = 0;}
-                    else if (code>=projector_size.height) {code = projector_size.height - 1;}
+                    else if (code>=projectorSize.height) {code = projectorSize.height - 1;}
 
                     pattern[1] = code + (pattern[1] - p);
                 }
@@ -298,9 +298,9 @@ void sl::convert_pattern(cv::Mat & pattern_image, cv::Size const& projector_size
     }
 }
 
-cv::Mat sl::estimate_direct_light(const std::vector<cv::Mat> & images, float b)
+cv::Mat StructuredLight::EstimateDirectLight(const std::vector<cv::Mat> & images, float b)
 {
-    static const unsigned COUNT = 10; // max number of images
+    static const unsigned Count = 10; // max number of images
 
     unsigned count = static_cast<int>(images.size());
     if (count<1)
@@ -308,12 +308,12 @@ cv::Mat sl::estimate_direct_light(const std::vector<cv::Mat> & images, float b)
         return cv::Mat();
     }
     
-    std::cout << " --- estimate_direct_light START ---\n";
+    std::cout << " --- EstimateDirectLight START ---\n";
 
-    if (count>COUNT)
+    if (count>Count)
     {
-        count = COUNT;
-        std::cout << "WARNING: Using only " << COUNT << " of " << count << std::endl;
+        count = Count;
+        std::cout << "WARNING: Using only " << Count << " of " << count << std::endl;
     }
 
     for (unsigned i=0; i<count; i++)
@@ -328,19 +328,19 @@ cv::Mat sl::estimate_direct_light(const std::vector<cv::Mat> & images, float b)
     cv::Size size = images.at(0).size();
 
     //initialize direct light image
-    cv::Mat direct_light(size, CV_8UC2);
+    cv::Mat directLight(size, CV_8UC2);
 
     double b1 = 1.0/(1.0 - b);
     double b2 = 2.0/(1.0 - b*1.0*b);
 
     for (unsigned h=0; static_cast<int>(h)<size.height; h++)
     {
-        unsigned char const* row[COUNT];
+        unsigned char const* row[Count];
         for (unsigned i=0; i<count; i++)
         {
             row[i] = images.at(i).ptr<unsigned char>(h);
         }
-        cv::Vec2b * row_light = direct_light.ptr<cv::Vec2b>(h);
+        cv::Vec2b * rowLight = directLight.ptr<cv::Vec2b>(h);
 
         for (unsigned w=0; static_cast<int>(w)<size.width; w++)
         {
@@ -354,28 +354,28 @@ cv::Mat sl::estimate_direct_light(const std::vector<cv::Mat> & images, float b)
 
             int Ld = static_cast<int>(b1*(Lmax - Lmin) + 0.5);
             int Lg = static_cast<int>(b2*(Lmin - b*Lmax) + 0.5);
-            row_light[w][0] = (Lg>0 ? static_cast<unsigned>(Ld) : Lmax);
-            row_light[w][1] = (Lg>0 ? static_cast<unsigned>(Lg) : 0);
+            rowLight[w][0] = (Lg>0 ? static_cast<unsigned>(Ld) : Lmax);
+            rowLight[w][1] = (Lg>0 ? static_cast<unsigned>(Lg) : 0);
 
-            //std::cout << "Ld=" << (int)row_light[w][0] << " iTotal=" <<(int) row_light[w][1] << std::endl;
+            //std::cout << "Ld=" << (int)rowLight[w][0] << " iTotal=" <<(int) rowLight[w][1] << std::endl;
         }
     }
 
-    std::cout << " --- estimate_direct_light END ---\n";
+    std::cout << " --- EstimateDirectLight END ---\n";
 
-    return direct_light;
+    return directLight;
 }
 
-cv::Mat sl::get_gray_image(const std::string & filename)
+cv::Mat StructuredLight::GetGrayImage(const std::string & filename)
 {
     //load image
-    cv::Mat rgb_image = cv::imread(filename);
-    if (rgb_image.rows>0 && rgb_image.cols>0)
+    cv::Mat rgbImage = cv::imread(filename);
+    if (rgbImage.rows>0 && rgbImage.cols>0)
     {
         //gray scale
-        cv::Mat gray_image;
-        cvtColor(rgb_image, gray_image, CV_BGR2GRAY);
-        return gray_image;
+        cv::Mat grayImage;
+        cvtColor(rgbImage, grayImage, CV_BGR2GRAY);
+        return grayImage;
     }
     return cv::Mat();
 }
@@ -384,7 +384,7 @@ cv::Mat sl::get_gray_image(const std::string & filename)
         The purpose of this function is to convert an unsigned
         binary number to reflected binary Gray code.
 */
-static unsigned util_binaryToGray(unsigned num)
+static unsigned UtilBinaryToGray(unsigned num)
 {
         return (num>>1) ^ num;
 }
@@ -393,7 +393,7 @@ static unsigned util_binaryToGray(unsigned num)
         The purpose of this function is to convert a reflected binary
         Gray code number to a binary number.
 */
-static unsigned util_grayToBinary(unsigned num, unsigned numBits)
+static unsigned UtilGrayToBinary(unsigned num, unsigned numBits)
 {
     for (unsigned shift = 1; shift < numBits; shift <<= 1)
     {
@@ -402,18 +402,18 @@ static unsigned util_grayToBinary(unsigned num, unsigned numBits)
     return num;
 }
 
-int sl::binaryToGray(int value) {return util_binaryToGray(value);}
+int StructuredLight::BinaryToGray(int value) {return UtilBinaryToGray(value);}
 
-inline int sl::binaryToGray(int value, unsigned offset) {return util_binaryToGray(value + offset);}
-inline int sl::grayToBinary(int value, unsigned offset) {return (util_grayToBinary(value, 32) - offset);}
+inline int StructuredLight::BinaryToGray(int value, unsigned offset) {return UtilBinaryToGray(value + offset);}
+inline int StructuredLight::GrayToBinary(int value, unsigned offset) {return (UtilGrayToBinary(value, 32) - offset);}
 
-cv::Mat sl::colorize_pattern(const cv::Mat & pattern_image, unsigned set, float max_value)
+cv::Mat StructuredLight::ColorizePattern(const cv::Mat & patternImage, unsigned set, float maxValue)
 {
-    if (pattern_image.rows==0)
+    if (patternImage.rows==0)
     {   //empty image
         return cv::Mat();
     }
-    if (pattern_image.type()!=CV_32FC2)
+    if (patternImage.type()!=CV_32FC2)
     {   //invalid image type
         return cv::Mat();
     }
@@ -422,24 +422,24 @@ cv::Mat sl::colorize_pattern(const cv::Mat & pattern_image, unsigned set, float 
         return cv::Mat();
     }
 
-    cv::Mat image(pattern_image.size(), CV_8UC3);
+    cv::Mat image(patternImage.size(), CV_8UC3);
 
-    float max_t = max_value;
+    float maxT = maxValue;
     float n = 4.f;
     float dt = 255.f/n;
-    for (int h=0; h<pattern_image.rows; h++)
+    for (int h=0; h<patternImage.rows; h++)
     {
-        const cv::Vec2f * row1 = pattern_image.ptr<cv::Vec2f>(h);
+        const cv::Vec2f * row1 = patternImage.ptr<cv::Vec2f>(h);
         cv::Vec3b * row2 = image.ptr<cv::Vec3b>(h);
-        for (int w=0; w<pattern_image.cols; w++)
+        for (int w=0; w<patternImage.cols; w++)
         {
-            if (row1[w][set]>max_value || INVALID(row1[w][set]))
+            if (row1[w][set]>maxValue || Invalid(row1[w][set]))
             {   //invalid value: use grey
                 row2[w] = cv::Vec3b(128, 128, 128);
                 continue;
             }
             //display
-            float t = row1[w][set]*255.f/max_t;
+            float t = row1[w][set]*255.f/maxT;
             float c1 = 0.f, c2 = 0.f, c3 = 0.f;
             if (t<=1.f*dt)
             {   //black -> red

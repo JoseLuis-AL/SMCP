@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2014, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,7 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "app/MainWindow.h"
 #include "ui/ProcessingDialog.h"
 #include "core/CalibrationData.h"
-#include "core/scan3d.h"
+#include "core/Scan3d.h"
 #include "common/Settings.h"
 
 namespace smcp
@@ -68,60 +69,60 @@ public:
 	Application(int& argc, char** argv);
 	~Application();
 
-	QSettings& getSettings();
+	QSettings& GetSettings();
 
 	//data dir
-	void set_root_dir(const QString& dirname);
-	QString get_root_dir(void) const;
-	bool change_root_dir(QWidget* parent_widget = NULL);
+	void SetRootDir(const QString& dirname);
+	QString GetRootDir(void) const;
+	bool ChangeRootDir(QWidget* parentWidget = NULL);
 
-	void clear(void);
+	void Clear(void);
 
-	const cv::Mat get_image(unsigned level, unsigned n, Role role = GrayImageRole) const;
-	int get_camera_width(unsigned level = 0) const;
-	int get_camera_height(unsigned level = 0) const;
-	int get_projector_width(unsigned level = 0) const;
-	int get_projector_height(unsigned level = 0) const;
+	const cv::Mat GetImage(unsigned level, unsigned n, Role role = GrayImageRole) const;
+	int GetCameraWidth(unsigned level = 0) const;
+	int GetCameraHeight(unsigned level = 0) const;
+	int GetProjectorWidth(unsigned level = 0) const;
+	int GetProjectorHeight(unsigned level = 0) const;
 
-	bool extract_chessboard_corners(void);
-	static void get_chessboard_world_coords(std::vector<cv::Point3f>& world_corners, cv::Size corner_count, cv::Size corner_size);
+	bool ExtractChessboardCorners(void);
+	static void GetChessboardWorldCoords(std::vector<cv::Point3f>& worldCorners, cv::Size cornerCount, cv::Size cornerSize);
 
-	bool extract_chessboard_corners_v2(void);
-	static void get_chessboard_world_coords_v2(std::vector<cv::Point3f>& world_corners, cv::Size corner_count, cv::Size2f corner_size);
-	void decode_all(void);
-	void decode(int level, QWidget* parent_widget = NULL);
-	void calibrate(void);
+	bool ExtractChessboardCornersV2(void);
+	static void GetChessboardWorldCoordsV2(std::vector<cv::Point3f>& worldCorners, cv::Size cornerCount, cv::Size2f cornerSize);
+	void DecodeAll(void);
+	void Decode(int level, QWidget* parentWidget = NULL);
+	void Calibrate(void);
 
-	bool decode_gray_set(unsigned level, cv::Mat& pattern_image, cv::Mat& min_max_image, QWidget* parent_widget = NULL) const;
-	bool dump_decoded(const char* filename, int type, cv::Mat2f const& pattern_image, cv::Mat2b const& min_max_image, cv::Mat3b const& color_image) const;
-	bool load_dump(const char* filename, int type, cv::Mat2f& pattern_image, cv::Mat2b& min_max_image, cv::Mat3b& color_image) const;
+	bool DecodeGraySet(unsigned level, cv::Mat& patternImage, cv::Mat& minMaxImage, QWidget* parentWidget = NULL) const;
+	bool DumpDecoded(const char* filename, int type, cv::Mat2f const& patternImage, cv::Mat2b const& minMaxImage, cv::Mat3b const& colorImage) const;
+	bool LoadDump(const char* filename, int type, cv::Mat2f& patternImage, cv::Mat2b& minMaxImage, cv::Mat3b& colorImage) const;
 
-	void load_config(void);
-	void apply_theme(void);
+	void LoadConfig(void);
+	void ApplyTheme(void);
 
 	//Detection/Decoding/Calibration processing
-	inline void processing_set_current_message(const QString& text) const { processingDialog.set_current_message(text); processEvents(); }
-	inline void processing_reset(void) { processingDialog.reset(); processEvents(); }
-	inline void processing_set_progress_total(unsigned value) { processingDialog.set_progress_total(value); processEvents(); }
-	inline void processing_set_progress_value(unsigned value) { processingDialog.set_progress_value(value); processEvents(); }
-	inline void processing_message(const QString& text) const { processingDialog.message(text); processEvents(); }
-	inline bool processing_canceled(void) const { return processingDialog.canceled(); }
+	inline void ProcessingSetCurrentMessage(const QString& text) const { processingDialog.SetCurrentMessage(text); processEvents(); }
+	inline void ProcessingReset(void) { processingDialog.Reset(); processEvents(); }
+	inline void ProcessingSetProgressTotal(unsigned value) { processingDialog.SetProgressTotal(value); processEvents(); }
+	inline void ProcessingSetProgressValue(unsigned value) { processingDialog.SetProgressValue(value); processEvents(); }
+	inline void ProcessingMessage(const QString& text) const { processingDialog.Message(text); processEvents(); }
+	inline bool ProcessingCanceled(void) const { return processingDialog.Canceled(); }
 
 	//calibration
-	bool load_calibration(QWidget* parent_widget = NULL);
-	bool save_calibration(QWidget* parent_widget = NULL);
+	bool LoadCalibration(QWidget* parentWidget = NULL);
+	bool SaveCalibration(QWidget* parentWidget = NULL);
 
 	//reconstruction
-	void reconstruct_model(int level, scan3d::Pointcloud& pointcloud, QWidget* parent_widget = NULL);
-	void reconstruct_model_dump(cv::Mat2f const& pattern_image, cv::Mat2b const& min_max_image, cv::Mat3b const& color_image, scan3d::Pointcloud& pointcloud, QWidget* parent_widget = NULL);
-	void compute_normals(scan3d::Pointcloud& pointcloud);
+	void ReconstructModel(int level, Scan3d::Pointcloud& pointcloud, QWidget* parentWidget = NULL);
+	void ReconstructModelDump(cv::Mat2f const& patternImage, cv::Mat2b const& minMaxImage, cv::Mat3b const& colorImage, Scan3d::Pointcloud& pointcloud, QWidget* parentWidget = NULL);
+	void ComputeNormals(Scan3d::Pointcloud& pointcloud);
 
-	void make_pattern_images(int level, cv::Mat& col_image, cv::Mat& row_image);
-	cv::Mat get_projector_view(int level, bool force_update = false);
+	void MakePatternImages(int level, cv::Mat& colImage, cv::Mat& rowImage);
+	cv::Mat GetProjectorView(int level, bool forceUpdate = false);
 
 	//model
-	void select_none(void);
-	void select_all(void);
+	void SelectNone(void);
+	void SelectAll(void);
 
 public slots:
 	void deinit(void);
@@ -135,15 +136,15 @@ public:
 
 	CalibrationData calib;
 
-	cv::Size2i corner_count;
-	cv::Size2f corner_size;
-	std::vector<std::vector<cv::Point3f> > corners_world;
-	std::vector<std::vector<cv::Point2f> > corners_camera;
-	std::vector<std::vector<cv::Point2f> > corners_projector;
-	std::vector<cv::Mat> pattern_list;
-	std::vector<cv::Mat> min_max_list;
-	std::vector<cv::Mat> projector_view_list;
-	scan3d::Pointcloud pointcloud;
+	cv::Size2i cornerCount;
+	cv::Size2f cornerSize;
+	std::vector<std::vector<cv::Point3f> > cornersWorld;
+	std::vector<std::vector<cv::Point2f> > cornersCamera;
+	std::vector<std::vector<cv::Point2f> > cornersProjector;
+	std::vector<cv::Mat> patternList;
+	std::vector<cv::Mat> minMaxList;
+	std::vector<cv::Mat> projectorViewList;
+	Scan3d::Pointcloud pointcloud;
 
 	MainWindow mainWin;
 	mutable ProcessingDialog processingDialog;

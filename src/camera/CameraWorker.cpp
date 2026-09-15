@@ -7,7 +7,7 @@
 
 #include "app/Application.h"
 #include "camera/CameraUtilities.h"
-#include "common/cvMatConvert.h"
+#include "common/CvMatConvert.h"
 
 namespace smcp
 {
@@ -36,7 +36,7 @@ void CameraWorker::start()
 		_camera->Init();
 
 		// 2. Disable all camera auto settings.
-		CameraUtilities::disableCameraAutoSettings(_camera);
+		CameraUtilities::DisableCameraAutoSettings(_camera);
 
 		// 3. Set the camera saved values.
 		onNewCameraBlackLevel(_settings.BlackLevel);
@@ -45,7 +45,7 @@ void CameraWorker::start()
 		onNewCameraGamma(_settings.Gamma);
 
 		// 4. Get the complete camera settings.
-		_settings = CameraUtilities::getCameraSettings(_camera);
+		_settings = CameraUtilities::GetCameraSettings(_camera);
 		emit newCameraSettingsSignal(_settings);
 
 		// Debug values.
@@ -68,7 +68,7 @@ void CameraWorker::start()
 		_camera->EndAcquisition();
 
 		// 8. Restore camera auto settings.
-		CameraUtilities::restoreCameraAutoSettings(_camera);
+		CameraUtilities::RestoreCameraAutoSettings(_camera);
 
 		// 9. De-initialize the spinnaker camera.
 		_camera->DeInit();
@@ -160,7 +160,7 @@ void CameraWorker::acquireLoop()
 		}
 
 		// Send the new image to GUI thread.
-		emit newFrameReadySignal(cvMatConvert::ToQPixmap(mat), grayStats);
+		emit newFrameReadySignal(CvMatConvert::ToQPixmap(mat), grayStats);
 
 		// Save the image (Bug 3: protect with mutex, Bug 4: reset counter).
 		{

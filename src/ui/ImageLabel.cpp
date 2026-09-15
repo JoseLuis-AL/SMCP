@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QPainter>
 #include <strmif.h>
 
-#include "core/io_util.h"
+#include "core/IoUtil.h"
 
 namespace smcp
 {
@@ -54,16 +54,16 @@ void ImageLabel::paintEvent(QPaintEvent*)
 	if (_image.data && _image.type() == CV_8UC3)
 	{   //copy cv::Mat image
 		_mutex.lock();
-		_pixmap = QPixmap::fromImage(io_util::qImage(_image));
+		_pixmap = QPixmap::fromImage(IoUtil::ToQImage(_image));
 		_image = cv::Mat();
 		_mutex.unlock();
 	}
 
 	if (!_pixmap.isNull())
 	{
-		QPixmap scale_pixmap = _pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-		QRectF rect = QRectF(QPointF(0, 0), QPointF(scale_pixmap.width(), scale_pixmap.height()));
-		painter.drawPixmap(rect, scale_pixmap, rect);
+		QPixmap scalePixmap = _pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+		QRectF rect = QRectF(QPointF(0, 0), QPointF(scalePixmap.width(), scalePixmap.height()));
+		painter.drawPixmap(rect, scalePixmap, rect);
 	}
 	else
 	{

@@ -1,14 +1,14 @@
-#include "common/cvMatConvert.h"
+#include "common/CvMatConvert.h"
 
 namespace smcp
 {
 
-QPixmap cvMatConvert::ToQPixmap(const cv::Mat& mat)
+QPixmap CvMatConvert::ToQPixmap(const cv::Mat& mat)
 {
 	return QPixmap::fromImage(ToQImage(mat));
 }
 
-QImage cvMatConvert::ToQImage(const cv::Mat& mat)
+QImage CvMatConvert::ToQImage(const cv::Mat& mat)
 {
 	switch (mat.type())
 	{
@@ -18,7 +18,7 @@ QImage cvMatConvert::ToQImage(const cv::Mat& mat)
 	}
 }
 
-QImage cvMatConvert::ToQImageFromRGB(const cv::Mat& mat)
+QImage CvMatConvert::ToQImageFromRGB(const cv::Mat& mat)
 {
 	cv::Mat rgb;
 	cv::cvtColor(mat, rgb, cv::COLOR_BGR2RGB);
@@ -27,7 +27,7 @@ QImage cvMatConvert::ToQImageFromRGB(const cv::Mat& mat)
 	return image.copy();
 }
 
-QImage cvMatConvert::ToQImageFromGray(const cv::Mat& mat)
+QImage CvMatConvert::ToQImageFromGray(const cv::Mat& mat)
 {
 	const QImage image(mat.data, mat.cols, mat.rows, static_cast<int>(mat.step), QImage::Format_Grayscale8);
 	return image.copy();

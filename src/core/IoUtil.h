@@ -27,27 +27,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #pragma once
-#include <QDialog>
-
-#include "ui_CalibrationDialog.h"
+#include <QImage>
+#include <opencv2/core/core.hpp>
+#include "core/Scan3d.h"
 
 namespace smcp
 {
 
-class CalibrationDialog : public QDialog, public Ui::CalibrationDialog
+namespace IoUtil
 {
-    Q_OBJECT
+    enum PlyFlags {PlyPoints = 0x00, PlyColors = 0x01, PlyNormals = 0x02, PlyBinary = 0x04, PlyPlane = 0x08, PlyFaces = 0x10, PlyTexture = 0x20};
+    
+    bool WritePly(const std::string & filename, Scan3d::Pointcloud const& pointcloud, unsigned flags = PlyPoints);
 
-public:
-    CalibrationDialog(QWidget * parent = 0, Qt::WindowFlags flags = 0);
-    ~CalibrationDialog();
+    QImage ToQImage(const cv::Mat & image);
+    QImage ToQImageFromRGB(const cv::Mat & image);
+    QImage ToQImageFromGray(const cv::Mat & image);
 
-    void calibrationUpdated(void);
-
-public slots:
-    void on_load_button_clicked(bool checked = false);
-    void on_save_button_clicked(bool checked = false);
-    void on_close_button_clicked(bool checked = false) {close();}
+    bool WritePgm(const cv::Mat & image, const char * basename);
 };
 
 } // namespace smcp

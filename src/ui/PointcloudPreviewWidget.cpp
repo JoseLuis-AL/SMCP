@@ -16,8 +16,8 @@
 namespace smcp
 {
 
-// GLSL 120 (OpenGL 2.1), igual que PointcloudWidget.
-static const char* vertexShaderSource =
+// GLSL 120 (OpenGL 2.1), same as PointcloudWidget.
+static const char* Vertex_Shader_Source =
 "#version 120\n"
 "attribute vec3 a_position;\n"
 "attribute vec3 a_color;\n"
@@ -29,14 +29,14 @@ static const char* vertexShaderSource =
 "    v_color      = a_color;\n"
 "}\n";
 
-static const char* fragmentShaderSource =
+static const char* Fragment_Shader_Source =
 "#version 120\n"
 "varying vec3 v_color;\n"
 "void main() {\n"
 "    gl_FragColor = vec4(v_color, 1.0);\n"
 "}\n";
 
-/* Construccion ============================================================================ */
+/* Construction ============================================================================ */
 
 PointcloudPreviewWidget::PointcloudPreviewWidget(QWidget* parent)
 	: QOpenGLWidget(parent)
@@ -44,7 +44,7 @@ PointcloudPreviewWidget::PointcloudPreviewWidget(QWidget* parent)
 	setMinimumSize(320, 240);
 	setFocusPolicy(Qt::StrongFocus);
 
-	// Lista superpuesta de nubes (estilo en resources/theme/smcp.qss, #pointcloud_overlay_list).
+	// Overlay list of clouds (styled in resources/theme/smcp.qss, #pointcloud_overlay_list).
 	_cloudListWidget = new QListWidget(this);
 	_cloudListWidget->setObjectName("pointcloud_overlay_list");
 	_cloudListWidget->setDragDropMode(QAbstractItemView::InternalMove);
@@ -61,7 +61,7 @@ PointcloudPreviewWidget::~PointcloudPreviewWidget()
 	makeCurrent();
 	for (auto& entry : _clouds)
 	{
-		destroyEntry(*entry);
+		DestroyEntry(*entry);
 	}
 	_clouds.clear();
 	doneCurrent();
@@ -74,16 +74,16 @@ void PointcloudPreviewWidget::initializeGL()
 	initializeOpenGLFunctions();
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glEnable(GL_DEPTH_TEST);
-	buildShaders();
+	BuildShaders();
 }
 
-void PointcloudPreviewWidget::buildShaders()
+void PointcloudPreviewWidget::BuildShaders()
 {
-	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, vertexShaderSource))
+	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, Vertex_Shader_Source))
 	{
 		qWarning() << "PointcloudPreviewWidget: vertex shader error:" << _shaderProgram.log();
 	}
-	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, fragmentShaderSource))
+	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, Fragment_Shader_Source))
 	{
 		qWarning() << "PointcloudPreviewWidget: fragment shader error:" << _shaderProgram.log();
 	}
@@ -95,7 +95,7 @@ void PointcloudPreviewWidget::buildShaders()
 	}
 }
 
-void PointcloudPreviewWidget::updateProjection(int w, int h)
+void PointcloudPreviewWidget::UpdateProjection(int w, int h)
 {
 	const float aspect = (h > 0) ? static_cast<float>(w) / static_cast<float>(h) : 1.0f;
 	const float nearPlane = std::max(0.01f, _distance * 0.001f);
@@ -107,10 +107,10 @@ void PointcloudPreviewWidget::updateProjection(int w, int h)
 void PointcloudPreviewWidget::resizeGL(int w, int h)
 {
 	glViewport(0, 0, w, std::max(1, h));
-	updateProjection(w, std::max(1, h));
+	UpdateProjection(w, std::max(1, h));
 }
 
-void PointcloudPreviewWidget::updateViewMatrix()
+void PointcloudPreviewWidget::UpdateViewMatrix()
 {
 	_view.setToIdentity();
 	_view.translate(0.0f, 0.0f, -_distance);
@@ -131,12 +131,12 @@ void PointcloudPreviewWidget::paintGL()
 	{
 		if (entry->pendingUpload)
 		{
-			uploadEntry(*entry);
+			UploadEntry(*entry);
 		}
 	}
 
-	updateProjection(width(), height());
-	updateViewMatrix();
+	UpdateProjection(width(), height());
+	UpdateViewMatrix();
 
 	const QMatrix4x4 mvp = _projection * _view;
 	const int stride = 6 * static_cast<int>(sizeof(float));
@@ -170,106 +170,124 @@ void PointcloudPreviewWidget::paintGL()
 	_shaderProgram.release();
 }
 
-/* Nubes =================================================================================== */
+/* Clouds ================================================================================== */
 
-int PointcloudPreviewWidget::addPointcloud(const pointcloud::ColorCloudPtr& cloud, const QColor& color_override,
-	const QString& name)
+PointcloudPreviewWidget::PreparedPointcloud PointcloudPreviewWidget::PreparePointcloud(const Pointcloud::ColorCloud& cloud,
+	const QColor& colorOverride, const QString& name)
 {
-	if (!cloud || cloud->empty())
+	PreparedPointcloud prepared;
+	prepared.name = name;
+	if (cloud.empty())
 	{
-		return -1;
+		return prepared;
 	}
 
-	// Primera pasada: puntos validos y caja envolvente (en coordenadas OpenGL).
-	int validCount = 0;
-	QVector3D bbMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-	QVector3D bbMax(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
+	const bool useOverride = colorOverride.isValid();
+	const float cr = static_cast<float>(colorOverride.redF());
+	const float cg = static_cast<float>(colorOverride.greenF());
+	const float cb = static_cast<float>(colorOverride.blueF());
 
-	for (const auto& pt : *cloud)
+	float minX = std::numeric_limits<float>::max(), minY = minX, minZ = minX;
+	float maxX = -std::numeric_limits<float>::max(), maxY = maxX, maxZ = maxX;
+
+	// Single pass writing through a raw pointer: sized for every point, trimmed to the finite ones.
+	prepared.buffer.resize(cloud.size() * 6);
+	float* out = prepared.buffer.data();
+	for (const auto& pt : cloud)
 	{
-		if (!pointcloud::is_finite(pt))
+		if (!Pointcloud::IsFinite(pt))
 		{
 			continue;
 		}
-		++validCount;
-		// Giro de 180 grados alrededor de X (OpenCV -> OpenGL): X, -Y, -Z.
-		const QVector3D p(pt.x, -pt.y, -pt.z);
-		bbMin = QVector3D(std::min(p.x(), bbMin.x()), std::min(p.y(), bbMin.y()), std::min(p.z(), bbMin.z()));
-		bbMax = QVector3D(std::max(p.x(), bbMax.x()), std::max(p.y(), bbMax.y()), std::max(p.z(), bbMax.z()));
-	}
-	if (validCount == 0)
-	{
-		return -1;
-	}
+		// 180 degree rotation around X (OpenCV -> OpenGL): X, -Y, -Z.
+		const float x = pt.x;
+		const float y = -pt.y;
+		const float z = -pt.z;
+		minX = std::min(minX, x); maxX = std::max(maxX, x);
+		minY = std::min(minY, y); maxY = std::max(maxY, y);
+		minZ = std::min(minZ, z); maxZ = std::max(maxZ, z);
 
-	// Segunda pasada: buffer intercalado [x, y, z, r, g, b].
-	auto entry = std::make_unique<CloudEntry>();
-	entry->pendingBuffer.reserve(static_cast<std::size_t>(validCount) * 6);
-
-	const bool useOverride = color_override.isValid();
-	const float cr = static_cast<float>(color_override.redF());
-	const float cg = static_cast<float>(color_override.greenF());
-	const float cb = static_cast<float>(color_override.blueF());
-
-	for (const auto& pt : *cloud)
-	{
-		if (!pointcloud::is_finite(pt))
-		{
-			continue;
-		}
-		entry->pendingBuffer.push_back(pt.x);
-		entry->pendingBuffer.push_back(-pt.y);
-		entry->pendingBuffer.push_back(-pt.z);
+		out[0] = x;
+		out[1] = y;
+		out[2] = z;
 		if (useOverride)
 		{
-			entry->pendingBuffer.push_back(cr);
-			entry->pendingBuffer.push_back(cg);
-			entry->pendingBuffer.push_back(cb);
+			out[3] = cr;
+			out[4] = cg;
+			out[5] = cb;
 		}
 		else
 		{
-			entry->pendingBuffer.push_back(pt.r / 255.0f);
-			entry->pendingBuffer.push_back(pt.g / 255.0f);
-			entry->pendingBuffer.push_back(pt.b / 255.0f);
+			out[3] = pt.r / 255.0f;
+			out[4] = pt.g / 255.0f;
+			out[5] = pt.b / 255.0f;
 		}
+		out += 6;
 	}
-	entry->vertexCount = validCount;
+
+	prepared.vertexCount = static_cast<int>((out - prepared.buffer.data()) / 6);
+	prepared.buffer.resize(static_cast<std::size_t>(prepared.vertexCount) * 6);
+	prepared.bbMin = QVector3D(minX, minY, minZ);
+	prepared.bbMax = QVector3D(maxX, maxY, maxZ);
+	return prepared;
+}
+
+int PointcloudPreviewWidget::AddPreparedPointcloud(PreparedPointcloud&& prepared)
+{
+	if (prepared.vertexCount <= 0)
+	{
+		return -1;
+	}
+
+	auto entry = std::make_unique<CloudEntry>();
+	entry->pendingBuffer = std::move(prepared.buffer);
+	entry->vertexCount = prepared.vertexCount;
 	entry->pendingUpload = true;
 
 	if (_clouds.empty())
 	{
-		_center = (bbMin + bbMax) * 0.5f;
-		_distance = std::max(1.0f, (bbMax - bbMin).length() * 1.5f);
+		_center = (prepared.bbMin + prepared.bbMax) * 0.5f;
+		_distance = std::max(1.0f, (prepared.bbMax - prepared.bbMin).length() * 1.5f);
 		_rotationX = 0.0f;
 		_rotationY = 0.0f;
 	}
 
 	const int index = static_cast<int>(_clouds.size());
-	entry->name = name.isEmpty() ? QString("Cloud %1").arg(_cloudCounter) : name;
+	entry->name = prepared.name.isEmpty() ? QString("Cloud %1").arg(_cloudCounter) : prepared.name;
 	++_cloudCounter;
 	_clouds.push_back(std::move(entry));
 
-	rebuildCloudList();
+	RebuildCloudList();
 	update();
 	return index;
 }
 
-void PointcloudPreviewWidget::removePointcloud(int index)
+int PointcloudPreviewWidget::AddPointcloud(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride,
+	const QString& name)
+{
+	if (!cloud)
+	{
+		return -1;
+	}
+	return AddPreparedPointcloud(PreparePointcloud(*cloud, colorOverride, name));
+}
+
+void PointcloudPreviewWidget::RemovePointcloud(int index)
 {
 	if (index < 0 || index >= static_cast<int>(_clouds.size()))
 	{
 		return;
 	}
 	makeCurrent();
-	destroyEntry(*_clouds[index]);
+	DestroyEntry(*_clouds[index]);
 	doneCurrent();
 	_clouds.erase(_clouds.begin() + index);
 
-	rebuildCloudList();
+	RebuildCloudList();
 	update();
 }
 
-void PointcloudPreviewWidget::clearPointclouds()
+void PointcloudPreviewWidget::ClearPointclouds()
 {
 	if (_clouds.empty())
 	{
@@ -278,18 +296,18 @@ void PointcloudPreviewWidget::clearPointclouds()
 	makeCurrent();
 	for (auto& entry : _clouds)
 	{
-		destroyEntry(*entry);
+		DestroyEntry(*entry);
 	}
 	doneCurrent();
 	_clouds.clear();
 
-	rebuildCloudList();
+	RebuildCloudList();
 	update();
 }
 
-/* Lista superpuesta ======================================================================= */
+/* Overlay list ============================================================================ */
 
-void PointcloudPreviewWidget::rebuildCloudList()
+void PointcloudPreviewWidget::RebuildCloudList()
 {
 	_cloudListWidget->clear();
 	if (_clouds.empty())
@@ -315,7 +333,7 @@ void PointcloudPreviewWidget::rebuildCloudList()
 		deleteButton->setObjectName("pointcloud_overlay_delete");
 		deleteButton->setFixedSize(22, 22);
 		deleteButton->setCursor(Qt::PointingHandCursor);
-		connect(deleteButton, &QPushButton::clicked, this, [this, i]() { removePointcloud(i); });
+		connect(deleteButton, &QPushButton::clicked, this, [this, i]() { RemovePointcloud(i); });
 
 		layout->addWidget(label, 1);
 		layout->addWidget(deleteButton, 0);
@@ -326,10 +344,10 @@ void PointcloudPreviewWidget::rebuildCloudList()
 	}
 
 	_cloudListWidget->show();
-	repositionOverlay();
+	RepositionOverlay();
 }
 
-void PointcloudPreviewWidget::repositionOverlay()
+void PointcloudPreviewWidget::RepositionOverlay()
 {
 	if (!_cloudListWidget || _cloudListWidget->isHidden())
 	{
@@ -346,7 +364,7 @@ void PointcloudPreviewWidget::repositionOverlay()
 	_cloudListWidget->raise();
 }
 
-void PointcloudPreviewWidget::onCloudListReordered()
+void PointcloudPreviewWidget::OnCloudListReordered()
 {
 	const int count = _cloudListWidget->count();
 	std::vector<std::unique_ptr<CloudEntry>> reordered;
@@ -362,7 +380,7 @@ void PointcloudPreviewWidget::onCloudListReordered()
 	}
 	_clouds = std::move(reordered);
 
-	rebuildCloudList();
+	RebuildCloudList();
 	update();
 }
 
@@ -370,7 +388,7 @@ bool PointcloudPreviewWidget::eventFilter(QObject* obj, QEvent* event)
 {
 	if (obj == _cloudListWidget && event->type() == QEvent::Drop)
 	{
-		QTimer::singleShot(0, this, [this]() { onCloudListReordered(); });
+		QTimer::singleShot(0, this, [this]() { OnCloudListReordered(); });
 	}
 	return QOpenGLWidget::eventFilter(obj, event);
 }
@@ -378,12 +396,12 @@ bool PointcloudPreviewWidget::eventFilter(QObject* obj, QEvent* event)
 void PointcloudPreviewWidget::resizeEvent(QResizeEvent* event)
 {
 	QOpenGLWidget::resizeEvent(event);
-	repositionOverlay();
+	RepositionOverlay();
 }
 
 /* GPU ===================================================================================== */
 
-void PointcloudPreviewWidget::uploadEntry(CloudEntry& entry)
+void PointcloudPreviewWidget::UploadEntry(CloudEntry& entry)
 {
 	if (!entry.vao.isCreated())
 	{
@@ -403,7 +421,7 @@ void PointcloudPreviewWidget::uploadEntry(CloudEntry& entry)
 	entry.pendingUpload = false;
 }
 
-void PointcloudPreviewWidget::destroyEntry(CloudEntry& entry)
+void PointcloudPreviewWidget::DestroyEntry(CloudEntry& entry)
 {
 	if (entry.vao.isCreated())
 	{
@@ -415,7 +433,7 @@ void PointcloudPreviewWidget::destroyEntry(CloudEntry& entry)
 	}
 }
 
-/* Raton =================================================================================== */
+/* Mouse =================================================================================== */
 
 void PointcloudPreviewWidget::mousePressEvent(QMouseEvent* event)
 {

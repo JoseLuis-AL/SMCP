@@ -123,14 +123,14 @@ set(SMCP_SOURCES_UI_CAPTURE
 set(SMCP_SOURCES_CORE
     src/core/CalibrationData.cpp
     src/core/CalibrationData.h
-    src/core/io_util.cpp
-    src/core/io_util.h
-    src/core/pointcloud_ops.cpp
-    src/core/pointcloud_ops.h
-    src/core/scan3d.cpp
-    src/core/scan3d.h
-    src/core/structured_light.cpp
-    src/core/structured_light.h
+    src/core/IoUtil.cpp
+    src/core/IoUtil.h
+    src/core/PointcloudOps.cpp
+    src/core/PointcloudOps.h
+    src/core/Scan3d.cpp
+    src/core/Scan3d.h
+    src/core/StructuredLight.cpp
+    src/core/StructuredLight.h
 )
 
 set(SMCP_SOURCES_CAMERA
@@ -149,8 +149,8 @@ set(SMCP_SOURCES_EXPORT
 set(SMCP_SOURCES_COMMON
     src/common/Literals.h
     src/common/Settings.h
-    src/common/cvMatConvert.cpp
-    src/common/cvMatConvert.h
+    src/common/CvMatConvert.cpp
+    src/common/CvMatConvert.h
 )
 
 set(SMCP_RESOURCES
@@ -186,7 +186,7 @@ set_target_properties(SMCP PROPERTIES
 )
 
 # Un unico directorio de inclusion: los includes llevan el subdirectorio
-# ("app/Application.h", "core/scan3d.h", ...). Los .ui viven junto a su clase.
+# ("app/Application.h", "core/Scan3d.h", ...). Los .ui viven junto a su clase.
 target_include_directories(SMCP PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_compile_definitions(SMCP PRIVATE

@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -41,16 +42,16 @@ public:
     ProcessingDialog(QWidget * parent = 0, Qt::WindowFlags flags = 0);
     ~ProcessingDialog();
 
-    inline void set_current_message(const QString & text) {current_message_label->setText(text);}
-    void reset(void);
-    inline void set_progress_total(unsigned value) {_total = value; progress_bar->setMaximum(_total);}
-    inline void set_progress_value(unsigned value) {progress_bar->setValue(value);}
+    inline void SetCurrentMessage(const QString & text) {current_message_label->setText(text);}
+    void Reset(void);
+    inline void SetProgressTotal(unsigned value) {_total = value; progress_bar->setMaximum(_total);}
+    inline void SetProgressValue(unsigned value) {progress_bar->setValue(value);}
 
-    void finish(void);
+    void Finish(void);
 
-    void message(const QString & text);
+    void Message(const QString & text);
 
-    inline bool canceled(void) const {return _cancel;}
+    inline bool Canceled(void) const {return _cancel;}
 
 public slots:
     void on_close_cancel_button_clicked(bool checked = false);

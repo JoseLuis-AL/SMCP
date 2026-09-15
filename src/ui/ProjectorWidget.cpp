@@ -38,7 +38,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 
 #include "ui/AboutDialog.h"
-#include "core/structured_light.h"
+#include "core/StructuredLight.h"
 
 namespace smcp
 {
@@ -46,97 +46,97 @@ namespace smcp
 ProjectorWidget::ProjectorWidget(QWidget * parent, Qt::WindowFlags flags) : 
     QWidget(parent, flags),
     _screen(0),
-    _current_pattern(-1),
-    _pattern_count(4),
+    _currentPattern(-1),
+    _patternCount(4),
     _vbits(1),
     _hbits(1),
     _updated(false),
-	_draw_cross(false)
+	_drawCross(false)
 {
 }
 
 ProjectorWidget::~ProjectorWidget()
 {
-    stop();
+    Stop();
 }
 
-void ProjectorWidget::reset(void)
+void ProjectorWidget::Reset(void)
 {
-    _current_pattern = -1;
+    _currentPattern = -1;
     _updated = false;
     _pixmap = QPixmap();
     emit new_image(_pixmap);
 }
 
-void ProjectorWidget::start(void)
+void ProjectorWidget::Start(void)
 {
-    stop();
-    reset();
+    Stop();
+    Reset();
 
     //validate screen
-    const QList<QScreen*> screen_list = QGuiApplication::screens();
-    int screens = screen_list.size();
+    const QList<QScreen*> screenList = QGuiApplication::screens();
+    int screens = screenList.size();
     if (_screen<0 || _screen>=screens)
     {   //error, fix it
         _screen = screens;
     }
 
     //display (QScreen sustituye a QDesktopWidget, obsoleto en Qt 5.14)
-    QRect screen_resolution = (_screen < screens)
-        ? screen_list[_screen]->geometry()
+    QRect screenResolution = (_screen < screens)
+        ? screenList[_screen]->geometry()
         : QGuiApplication::primaryScreen()->geometry();
-    move(QPoint(screen_resolution.x(), screen_resolution.y()));
+    move(QPoint(screenResolution.x(), screenResolution.y()));
     showFullScreen();
 
     //update bit count for the current resolution
-    update_pattern_bit_count();
+    UpdatePatternBitCount();
 }
 
-void ProjectorWidget::stop(void)
+void ProjectorWidget::Stop(void)
 {
     hide();
-    reset();
+    Reset();
 }
 
-void ProjectorWidget::prev(void)
+void ProjectorWidget::Prev(void)
 {
     if (_updated)
     {   //pattern not processed: wait
         return;
     }
 
-    if (_current_pattern<1)
+    if (_currentPattern<1)
     {
         return;
     }
 
-    _current_pattern--;
+    _currentPattern--;
     _pixmap = QPixmap();
     update();
     QApplication::processEvents();
 }
 
-void ProjectorWidget::next(void)
+void ProjectorWidget::Next(void)
 {
     if (_updated)
     {   //pattern not processed: wait
         return;
     }
 
-    if (finished())
+    if (Finished())
     {
         return;
     }
 
-    _current_pattern++;
+    _currentPattern++;
     _pixmap = QPixmap();
     update();
     QApplication::processEvents();
 }
 
-bool ProjectorWidget::finished(void) const
+bool ProjectorWidget::Finished(void) const
 {
-    return (_current_pattern+2 > 2+4*_pattern_count);
+    return (_currentPattern+2 > 2+4*_patternCount);
 }
 
 void ProjectorWidget::paintEvent(QPaintEvent *)
@@ -144,7 +144,7 @@ void ProjectorWidget::paintEvent(QPaintEvent *)
     QPainter painter(this);
 
     // Check for valid pattern.
-    if (_current_pattern < 0)
+    if (_currentPattern < 0)
     {
         QRectF rect = QRectF(QPointF(0, 0), QPointF(width(), height()));
         painter.drawText(rect, Qt::AlignCenter, "No image");
@@ -156,7 +156,7 @@ void ProjectorWidget::paintEvent(QPaintEvent *)
         if (_pixmap.isNull())
         {
             updated = true;
-            make_pattern();
+            MakePattern();
         }
 
         // Draw pattern.
@@ -164,7 +164,7 @@ void ProjectorWidget::paintEvent(QPaintEvent *)
         painter.drawPixmap(rect, _pixmap, rect);
 
     	// Draw cross.
-        if (_draw_cross)
+        if (_drawCross)
         {
             const QPen crossPen(QColor("#3e8948"), 10);
             painter.setPen(crossPen);
@@ -185,7 +185,7 @@ void ProjectorWidget::paintEvent(QPaintEvent *)
     }
 }
 
-void ProjectorWidget::update_pattern_bit_count(void)
+void ProjectorWidget::UpdatePatternBitCount(void)
 {
     int cols = width();
     int rows = height();
@@ -195,32 +195,32 @@ void ProjectorWidget::update_pattern_bit_count(void)
     _hbits = 1;
     for (int i=(1<<_vbits); i<cols; i=(1<<_vbits)) { _vbits++; }
     for (int i=(1<<_hbits); i<rows; i=(1<<_hbits)) { _hbits++; }
-    _pattern_count = std::min(std::min(_vbits, _hbits), _pattern_count);
+    _patternCount = std::min(std::min(_vbits, _hbits), _patternCount);
     std::cerr << " vbits " << _vbits << " / cols="<<cols<<", mvalue="<< ((1<<_vbits)-1) << std::endl;
     std::cerr << " hbits " << _hbits << " / rows="<<rows<<", mvalue="<< ((1<<_hbits)-1) << std::endl;
-    std::cerr << " pattern_count="<< _pattern_count << std::endl; 
+    std::cerr << " pattern_count="<< _patternCount << std::endl; 
 }
 
-void ProjectorWidget::make_pattern(void)
+void ProjectorWidget::MakePattern(void)
 {
     int cols = width();
     int rows = height();
 
     /*
-    if (_current_pattern<1)
+    if (_currentPattern<1)
     {   //search bit number
         _vbits = 1;
         _hbits = 1;
         for (int i=(1<<_vbits); i<cols; i=(1<<_vbits)) { _vbits++; }
         for (int i=(1<<_hbits); i<rows; i=(1<<_hbits)) { _hbits++; }
-        _pattern_count = std::min(std::min(_vbits, _hbits), _pattern_count);
+        _patternCount = std::min(std::min(_vbits, _hbits), _patternCount);
         std::cerr << " vbits " << _vbits << " / cols="<<cols<<", mvalue="<< ((1<<_vbits)-1) << std::endl;
         std::cerr << " hbits " << _hbits << " / rows="<<rows<<", mvalue="<< ((1<<_hbits)-1) << std::endl;
-        std::cerr << " pattern_count="<< _pattern_count << std::endl; 
+        std::cerr << " pattern_count="<< _patternCount << std::endl; 
     }
     */
 
-    int vmask = 0, voffset = ((1<<_vbits)-cols)/2, hmask = 0, hoffset = ((1<<_hbits)-rows)/2, inverted = (_current_pattern%2)==0;
+    int vmask = 0, voffset = ((1<<_vbits)-cols)/2, hmask = 0, hoffset = ((1<<_hbits)-rows)/2, inverted = (_currentPattern%2)==0;
 
     // patterns
     // -----------
@@ -232,44 +232,44 @@ void ProjectorWidget::make_pattern(void)
     // 04 vertical, bit N-1, normal
     // 04 vertical, bit N-2, inverted
     // ..
-    // XX =  (2*_pattern_count + 2) - 2 vertical, bit N, normal
-    // XX =  (2*_pattern_count + 2) - 1 vertical, bit N, inverted
+    // XX =  (2*_patternCount + 2) - 2 vertical, bit N, normal
+    // XX =  (2*_patternCount + 2) - 1 vertical, bit N, inverted
     // -----------
-    // 2+N+00 = 2*(_pattern_count + 2) horizontal, bit N-0, normal
+    // 2+N+00 = 2*(_patternCount + 2) horizontal, bit N-0, normal
     // 2+N+01 horizontal, bit N-0, inverted
     // ..
-    // YY =  (4*_pattern_count + 2) - 2 horizontal, bit N, normal
-    // YY =  (4*_pattern_count + 2) - 1 horizontal, bit N, inverted
+    // YY =  (4*_patternCount + 2) - 2 horizontal, bit N, normal
+    // YY =  (4*_patternCount + 2) - 1 horizontal, bit N, inverted
 
-    if (_current_pattern<2)
+    if (_currentPattern<2)
     {   //white or black
-        _pixmap = make_pattern(rows, cols, vmask, voffset, hmask, hoffset, inverted);
+        _pixmap = MakePattern(rows, cols, vmask, voffset, hmask, hoffset, inverted);
     }
-    else if (_current_pattern<2*_pattern_count+2)
+    else if (_currentPattern<2*_patternCount+2)
     {   //vertical
-        int bit = _vbits - _current_pattern/2;
+        int bit = _vbits - _currentPattern/2;
         vmask = 1<<bit;
-        //std::cerr << "v# cp: " << _current_pattern << " bit:" << bit << " mask:" << vmask << std::endl;
-        _pixmap = make_pattern(rows, cols, vmask, voffset, hmask, hoffset, !inverted);
+        //std::cerr << "v# cp: " << _currentPattern << " bit:" << bit << " mask:" << vmask << std::endl;
+        _pixmap = MakePattern(rows, cols, vmask, voffset, hmask, hoffset, !inverted);
     }
-    else if (_current_pattern<4*_pattern_count+2)
+    else if (_currentPattern<4*_patternCount+2)
     {   //horizontal
-        int bit = _hbits + _pattern_count - _current_pattern/2;
+        int bit = _hbits + _patternCount - _currentPattern/2;
         hmask = 1<<bit;
-        //std::cerr << "h# cp: " << _current_pattern << " bit:" << bit << " mask:" << hmask << std::endl;
-        _pixmap = make_pattern(rows, cols, vmask, voffset, hmask, hoffset, !inverted);
+        //std::cerr << "h# cp: " << _currentPattern << " bit:" << bit << " mask:" << hmask << std::endl;
+        _pixmap = MakePattern(rows, cols, vmask, voffset, hmask, hoffset, !inverted);
     }
     else
     {   //error
         assert(false);
-        stop();
+        Stop();
         return;
     }
 
-    //_pixmap.save(QString("pat_%1.png").arg(_current_pattern, 2, 10, QLatin1Char('0')));
+    //_pixmap.save(QString("pat_%1.png").arg(_currentPattern, 2, 10, QLatin1Char('0')));
 }
 
-QPixmap ProjectorWidget::make_pattern(int rows, int cols, int vmask, int voffset, int hmask, int hoffset, int inverted)
+QPixmap ProjectorWidget::MakePattern(int rows, int cols, int vmask, int voffset, int hmask, int hoffset, int inverted)
 {
     QImage image(cols, rows, QImage::Format_ARGB32);
 
@@ -282,7 +282,7 @@ QPixmap ProjectorWidget::make_pattern(int rows, int cols, int vmask, int voffset
         for (int w=0; w<cols; w++)
         {
             uchar * px = row + (4*w);
-            int test = (sl::binaryToGray(h+hoffset) & hmask) + (sl::binaryToGray(w+voffset) & vmask);
+            int test = (StructuredLight::BinaryToGray(h+hoffset) & hmask) + (StructuredLight::BinaryToGray(w+voffset) & vmask);
             int value = (test ? tvalue : fvalue);
 
             px[0] = value; //B
@@ -295,12 +295,12 @@ QPixmap ProjectorWidget::make_pattern(int rows, int cols, int vmask, int voffset
     return QPixmap::fromImage(image);
 }
 
-bool ProjectorWidget::save_info(QString const& filename, bool invert) const
+bool ProjectorWidget::SaveInfo(QString const& filename, bool invert) const
 {
     FILE * fp = fopen(qPrintable(filename), "w");
     if (!fp)
     {   //failed
-        std::cerr << "Projector save_info failed, file: " << qPrintable(filename) << std::endl;
+        std::cerr << "Projector SaveInfo failed, file: " << qPrintable(filename) << std::endl;
         return false;
     }
 
@@ -313,26 +313,26 @@ bool ProjectorWidget::save_info(QString const& filename, bool invert) const
       cols  = height();
     }
 
-    int effective_width = cols;
-    int effective_height = rows;
+    int effectiveWidth = cols;
+    int effectiveHeight = rows;
 
-    int max_vert_value = (1<<std::min(_vbits,_pattern_count));
-    while (effective_width>max_vert_value )
+    int maxVertValue = (1<<std::min(_vbits,_patternCount));
+    while (effectiveWidth>maxVertValue )
     {
-        effective_width >>= 1;
+        effectiveWidth >>= 1;
     }
-    int max_horz_value = (1<<std::min(_hbits,_pattern_count));
-    while (effective_height>max_horz_value)
+    int maxHorzValue = (1<<std::min(_hbits,_patternCount));
+    while (effectiveHeight>maxHorzValue)
     {
-        effective_height >>= 1;
+        effectiveHeight >>= 1;
     }
 
-    fprintf(fp, "%u %u\n", effective_width, effective_height);
+    fprintf(fp, "%u %u\n", effectiveWidth, effectiveHeight);
 
     fprintf(fp, "\n# width height\n"); //help
 
     std::cerr << "Saved projetor info: " << qPrintable(filename) << std::endl
-              << " - Effective resolution: " << effective_width << "x" << effective_height << std::endl;
+              << " - Effective resolution: " << effectiveWidth << "x" << effectiveHeight << std::endl;
 
     //close
     fclose(fp);

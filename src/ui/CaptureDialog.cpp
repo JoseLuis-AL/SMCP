@@ -34,19 +34,19 @@ CaptureDialog::CaptureDialog(QWidget* parent, Qt::WindowFlags flags) : QDialog(p
 	setupUi(this);
 
 	// Initialize subsystems.
-	init_spinnaker();
-	init_signals();
-	init_controls();
+	InitSpinnaker();
+	InitSignals();
+	InitControls();
 
 	// Populate combo boxes with available devices.
-	update_camera_combo();
-	const int screen_idx = update_screen_combo();
+	UpdateCameraCombo();
+	const int screenIdx = UpdateScreenCombo();
 
 	// Configure the projector for the selected screen.
-	projector_widget.set_screen(screen_idx);
+	projectorWidget.SetScreen(screenIdx);
 
 	// Start the camera live preview.
-	start_camera();
+	StartCamera();
 }
 
 /// <summary>
@@ -57,31 +57,31 @@ CaptureDialog::CaptureDialog(QWidget* parent, Qt::WindowFlags flags) : QDialog(p
 /// </remarks>
 CaptureDialog::~CaptureDialog()
 {
-	QSettings& appSettings = APP->getSettings();
+	QSettings& appSettings = APP->GetSettings();
 
 	// Capture values.
-	appSettings.setValue(Settings::Capture::WaitTime, wait_time_spin->value());
+	appSettings.setValue(Settings::Capture::Wait_Time, wait_time_spin->value());
 	appSettings.setValue(Settings::Capture::Continuous, continuous_spin->value());
 
 	// Free projector.
 	appSettings.setValue(Settings::Projector::Screen, screen_combo->currentIndex());
-	appSettings.setValue(Settings::Projector::PatternCount, projector_patterns_spin->value());
-	projector_widget.stop();
+	appSettings.setValue(Settings::Projector::Pattern_Count, projector_patterns_spin->value());
+	projectorWidget.Stop();
 
 	// Free camera.
-	stop_camera();
-	appSettings.setValue(Settings::Camera::BlackLevel, camera_black_level_spin->value());
-	appSettings.setValue(Settings::Camera::ExposureTime, camera_exposure_spin->value());
+	StopCamera();
+	appSettings.setValue(Settings::Camera::Black_Level, camera_black_level_spin->value());
+	appSettings.setValue(Settings::Camera::Exposure_Time, camera_exposure_spin->value());
 	appSettings.setValue(Settings::Camera::Gain, camera_gain_spin->value());
 	appSettings.setValue(Settings::Camera::Gamma, camera_gamma_spin->value());
-	appSettings.setValue(Settings::Camera::SerialNumber, camera_serial_number);
+	appSettings.setValue(Settings::Camera::Serial_Number, cameraSerialNumber);
 
 	// De-Initialize the spinnaker system.
 	try
 	{
-		camera_ptr = nullptr;
-		camera_list.Clear();
-		spinnaker_system_ptr->ReleaseInstance();
+		cameraPtr = nullptr;
+		cameraList.Clear();
+		spinnakerSystemPtr->ReleaseInstance();
 	}
 	catch (Spinnaker::Exception& e)
 	{
@@ -94,15 +94,15 @@ CaptureDialog::~CaptureDialog()
 /// <summary>
 /// Initializes the Spinnaker camera system instance.
 /// </summary>
-void CaptureDialog::init_spinnaker()
+void CaptureDialog::InitSpinnaker()
 {
-	spinnaker_system_ptr = Spinnaker::System::GetInstance();
+	spinnakerSystemPtr = Spinnaker::System::GetInstance();
 }
 
 /// <summary>
 /// Connects all required signals to their corresponding slots.
 /// </summary>
-void CaptureDialog::init_signals()
+void CaptureDialog::InitSignals()
 {
 	connect(APP, &Application::root_dir_changed, this, &CaptureDialog::_on_root_dir_changed);
 }
@@ -112,7 +112,7 @@ void CaptureDialog::init_signals()
 /// clamping by the spin boxes. Blocks signals during initialization to avoid emitting premature change notifications to subsystems that are not yet
 /// ready (e.g. the camera worker thread).
 /// </summary>
-void CaptureDialog::init_controls() const
+void CaptureDialog::InitControls() const
 {
 	// Hide progress indicators until a capture starts.
 	current_message_label->setVisible(false);
@@ -120,54 +120,54 @@ void CaptureDialog::init_controls() const
 	progress_bar->setVisible(false);
 
 	// Output directory.
-	output_dir_line->setText(APP->get_root_dir());
+	output_dir_line->setText(APP->GetRootDir());
 
 	// Block signals on all spin boxes to prevent premature valueChanged emissions.
-	const QSignalBlocker block_patterns(projector_patterns_spin);
-	const QSignalBlocker block_wait(wait_time_spin);
-	const QSignalBlocker block_exposure(camera_exposure_spin);
-	const QSignalBlocker block_continuous(continuous_spin);
-	const QSignalBlocker block_black_level(camera_black_level_spin);
-	const QSignalBlocker block_gain(camera_gain_spin);
-	const QSignalBlocker block_gamma(camera_gamma_spin);
+	const QSignalBlocker blockPatterns(projector_patterns_spin);
+	const QSignalBlocker blockWait(wait_time_spin);
+	const QSignalBlocker blockExposure(camera_exposure_spin);
+	const QSignalBlocker blockContinuous(continuous_spin);
+	const QSignalBlocker blockBlackLevel(camera_black_level_spin);
+	const QSignalBlocker blockGain(camera_gain_spin);
+	const QSignalBlocker blockGamma(camera_gamma_spin);
 
 	// Projector pattern count.
 	projector_patterns_spin->setValue(
-		APP->config.value(Settings::Projector::PatternCount, Settings::Projector::PatternCountDefaultValue).toInt());
+		APP->config.value(Settings::Projector::Pattern_Count, Settings::Projector::Pattern_Count_Default_Value).toInt());
 
 	// Capture wait time between projected patterns.
 	wait_time_spin->setValue(
-		APP->config.value(Settings::Capture::WaitTime, Settings::Capture::WaitTimeDefaultValue).toInt());
+		APP->config.value(Settings::Capture::Wait_Time, Settings::Capture::Wait_Time_Default_Value).toInt());
 
 	// Camera exposure (temporary range until hardware reports real limits via _on_new_camera_settings).
 	camera_exposure_spin->setMinimum(0);
 	camera_exposure_spin->setMaximum(50000);
 	camera_exposure_spin->setValue(
-		APP->config.value(Settings::Camera::ExposureTime, Settings::Camera::ExposureTimeDefaultValue).toDouble());
+		APP->config.value(Settings::Camera::Exposure_Time, Settings::Camera::Exposure_Time_Default_Value).toDouble());
 
 	// Continuous capture interval (set range before value to avoid clamping).
 	continuous_spin->setMinimum(10);
 	continuous_spin->setMaximum(9999);
 	continuous_spin->setValue(
-		APP->config.value(Settings::Capture::Continuous, Settings::Capture::ContinuousDefaultValue).toInt());
+		APP->config.value(Settings::Capture::Continuous, Settings::Capture::Continuous_Default_Value).toInt());
 
 	// Camera black level (temporary range until hardware reports real limits via _on_new_camera_settings).
 	camera_black_level_spin->setMinimum(0);
 	camera_black_level_spin->setMaximum(100);
 	camera_black_level_spin->setValue(
-		APP->config.value(Settings::Camera::BlackLevel, Settings::Camera::BlackLevelDefaultValue).toDouble());
+		APP->config.value(Settings::Camera::Black_Level, Settings::Camera::Black_Level_Default_Value).toDouble());
 
 	// Camera gain (temporary range until hardware reports real limits via _on_new_camera_settings).
 	camera_gain_spin->setMinimum(0);
 	camera_gain_spin->setMaximum(50);
 	camera_gain_spin->setValue(
-		APP->config.value(Settings::Camera::Gain, Settings::Camera::GainDefaultValue).toDouble());
+		APP->config.value(Settings::Camera::Gain, Settings::Camera::Gain_Default_Value).toDouble());
 
 	// Camera gamma (temporary range until hardware reports real limits via _on_new_camera_settings).
 	camera_gamma_spin->setMinimum(0);
 	camera_gamma_spin->setMaximum(4);
 	camera_gamma_spin->setValue(
-		APP->config.value(Settings::Camera::Gamma, Settings::Camera::GammaDefaultValue).toDouble());
+		APP->config.value(Settings::Camera::Gamma, Settings::Camera::Gamma_Default_Value).toDouble());
 
 	// Alignment mode starts disabled.
 	alignment_mode_check->setChecked(false);
@@ -182,12 +182,12 @@ void CaptureDialog::init_controls() const
 /// <summary>
 /// Updates the preview in the UI with the latest frame from the camera and displays its corresponding grayscale statistics.
 /// </summary>
-/// <param name="new_frame"></param>
-/// <param name="gray_stats"></param>
-void CaptureDialog::_on_new_camera_frame(const QPixmap& new_frame, const QString& gray_stats) const
+/// <param name="newFrame"></param>
+/// <param name="grayStats"></param>
+void CaptureDialog::_on_new_camera_frame(const QPixmap& newFrame, const QString& grayStats) const
 {
-	cameraPreview->setImage(new_frame);				// Set the new camera frame.
-	camera_gray_stats_label->setText(gray_stats);	// Set frame gray statistics.
+	cameraPreview->setImage(newFrame);				// Set the new camera frame.
+	camera_gray_stats_label->setText(grayStats);	// Set frame gray statistics.
 }
 
 /* CAMERA ================================================================================== */
@@ -196,18 +196,18 @@ void CaptureDialog::_on_new_camera_frame(const QPixmap& new_frame, const QString
 /// Update the interface dropdown menu with the connected Spinnaker cameras and automatically restore the selection of the last used camera by reading
 /// its saved serial number.
 /// </summary>
-void CaptureDialog::update_camera_combo()
+void CaptureDialog::UpdateCameraCombo()
 {
 	// Disable combo box signals.
 	camera_combo->blockSignals(true);
 
 	// Retrieve the list of Spinnaker cameras.
-	camera_list.Clear();
-	camera_list = spinnaker_system_ptr->GetCameras();
-	n_cameras = static_cast<int>(camera_list.GetSize());
+	cameraList.Clear();
+	cameraList = spinnakerSystemPtr->GetCameras();
+	nCameras = static_cast<int>(cameraList.GetSize());
 
 	// Check cameras.
-	if (n_cameras == 0)
+	if (nCameras == 0)
 	{
 		camera_combo->addItem("No camera found");
 		qDebug() << "No Spinnaker camera detected.";
@@ -215,40 +215,40 @@ void CaptureDialog::update_camera_combo()
 	}
 
 	// Try to the get current camera.
-	const QSettings& app_settings = APP->getSettings();
-	const QString saved_camera_serial_number = app_settings.value(Settings::Camera::SerialNumber, "").toString();
-	camera_idx = 0;
+	const QSettings& appSettings = APP->GetSettings();
+	const QString savedCameraSerialNumber = appSettings.value(Settings::Camera::Serial_Number, "").toString();
+	cameraIdx = 0;
 
 	// Iterate trough each camera, initialize it, read its name and de-initialize it.
-	for (int i = 0; i < n_cameras; ++i)
+	for (int i = 0; i < nCameras; ++i)
 	{
-		Spinnaker::CameraPtr temp_camera_ptr = camera_list.GetByIndex(i);
-		temp_camera_ptr->Init();
+		Spinnaker::CameraPtr tempCameraPtr = cameraList.GetByIndex(i);
+		tempCameraPtr->Init();
 
 		// Access the "DeviceNodeName".
-		std::string temp_model_name;
-		std::string temp_camera_serial_number;
-		if (CameraUtilities::getCameraInfo(temp_camera_ptr, temp_model_name, temp_camera_serial_number))
+		std::string tempModelName;
+		std::string tempCameraSerialNumber;
+		if (CameraUtilities::GetCameraInfo(tempCameraPtr, tempModelName, tempCameraSerialNumber))
 		{
-			QString temp_camera_name = QString::fromStdString(temp_model_name).append(" ").append(temp_camera_serial_number.c_str());
+			QString tempCameraName = QString::fromStdString(tempModelName).append(" ").append(tempCameraSerialNumber.c_str());
 
 			// Add to combo.
-			camera_combo->addItem(temp_camera_name);
+			camera_combo->addItem(tempCameraName);
 
 			// Check camera serial number.
-			if (saved_camera_serial_number == QString::fromStdString(temp_camera_serial_number))
+			if (savedCameraSerialNumber == QString::fromStdString(tempCameraSerialNumber))
 			{
-				camera_idx = i;
-				camera_serial_number = saved_camera_serial_number;
+				cameraIdx = i;
+				cameraSerialNumber = savedCameraSerialNumber;
 			}
 		}
 
 		// De-initialize the camera.
-		temp_camera_ptr->DeInit();
+		tempCameraPtr->DeInit();
 	}
 
 	// Select the camera.
-	camera_combo->setCurrentIndex(camera_idx);
+	camera_combo->setCurrentIndex(cameraIdx);
 
 	// Enable combo box signals.
 	camera_combo->blockSignals(false);
@@ -260,38 +260,38 @@ void CaptureDialog::update_camera_combo()
 /// <param name="index">Index of the newly selected camera.</param>
 void CaptureDialog::on_camera_combo_currentIndexChanged(int index)
 {
-	if (camera_list.GetSize() == 0) return;
+	if (cameraList.GetSize() == 0) return;
 
-	camera_idx = index;
-	start_camera();
+	cameraIdx = index;
+	StartCamera();
 }
 
 /// <summary>
 /// Start the current selected camera.
 /// </summary>
-void CaptureDialog::start_camera()
+void CaptureDialog::StartCamera()
 {
 	// Check valid index.
-	if (camera_idx < 0 || camera_idx > n_cameras) return;
+	if (cameraIdx < 0 || cameraIdx > nCameras) return;
 
 	// Busy cursor.
 	QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
 	QApplication::processEvents();
 
 	// Stop the current camera.
-	stop_camera();
+	StopCamera();
 
 	// Give some time to release resources.
-	wait_time(1);
+	WaitTime(1);
 
 	// Configure the camera.
 	try
 	{
 		// Get the new camera index.
-		camera_ptr = camera_list.GetByIndex(camera_idx);
+		cameraPtr = cameraList.GetByIndex(cameraIdx);
 
 		// Setup camera thread.
-		setup_camera_thread();
+		SetupCameraThread();
 	}
 	catch (Spinnaker::Exception& e)
 	{
@@ -310,27 +310,27 @@ void CaptureDialog::start_camera()
 /// <summary>
 /// Stops the current camera and free resources.
 /// </summary>
-void CaptureDialog::stop_camera()
+void CaptureDialog::StopCamera()
 {
 	// Busy cursor.
 	QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
 	QApplication::processEvents();
 
 	// Check valid camera.
-	if (camera_ptr == nullptr)
+	if (cameraPtr == nullptr)
 	{
 		QApplication::restoreOverrideCursor();
 		return;
 	}
 
 	// Clean camera preview.
-	cameraPreview->clear();
+	cameraPreview->Clear();
 
 	// Stop the current camera capture worker.
-	if (camera_worker) camera_worker->stop();
-	camera_thread.quit();
-	camera_thread.wait();
-	camera_worker = nullptr;
+	if (cameraWorker) cameraWorker->stop();
+	cameraThread.quit();
+	cameraThread.wait();
+	cameraWorker = nullptr;
 
 	// Restore the cursor.
 	QApplication::restoreOverrideCursor();
@@ -340,54 +340,54 @@ void CaptureDialog::stop_camera()
 /// Configure and start an independent workflow to manage the camera, loading its previous settings and connecting all the necessary signals for
 /// asynchronous communication with the main interface.
 /// </summary>
-void CaptureDialog::setup_camera_thread()
+void CaptureDialog::SetupCameraThread()
 {
 	// CAMERA SETTINGS ===================================================
-	const QSettings& appSettings = APP->getSettings();
+	const QSettings& appSettings = APP->GetSettings();
 	CameraSettings cameraSettings;
 
 	cameraSettings.BlackLevel = appSettings.value(
-		Settings::Camera::BlackLevel, Settings::Camera::BlackLevelDefaultValue).toDouble();
+		Settings::Camera::Black_Level, Settings::Camera::Black_Level_Default_Value).toDouble();
 	cameraSettings.ExposureTime = appSettings.value(
-		Settings::Camera::ExposureTime, Settings::Camera::ExposureTimeDefaultValue).toDouble();
+		Settings::Camera::Exposure_Time, Settings::Camera::Exposure_Time_Default_Value).toDouble();
 	cameraSettings.Gain = appSettings.value(
-		Settings::Camera::Gain, Settings::Camera::GainDefaultValue).toDouble();
+		Settings::Camera::Gain, Settings::Camera::Gain_Default_Value).toDouble();
 	cameraSettings.Gamma = appSettings.value(
-		Settings::Camera::Gamma, Settings::Camera::GammaDefaultValue).toDouble();
+		Settings::Camera::Gamma, Settings::Camera::Gamma_Default_Value).toDouble();
 
 	// Create the camera worker and move to thread.
-	camera_worker = new CameraWorker(camera_ptr, cameraSettings);
-	camera_worker->moveToThread(&camera_thread);
+	cameraWorker = new CameraWorker(cameraPtr, cameraSettings);
+	cameraWorker->moveToThread(&cameraThread);
 
 	// THREAD SIGNALS ====================================================
-	connect(&camera_thread, &QThread::started, camera_worker, &CameraWorker::start);
-	connect(&camera_thread, &QThread::finished, camera_worker, &CameraWorker::deleteLater);
-	connect(camera_worker, &CameraWorker::finishedSignal, &camera_thread, &QThread::quit);
+	connect(&cameraThread, &QThread::started, cameraWorker, &CameraWorker::start);
+	connect(&cameraThread, &QThread::finished, cameraWorker, &CameraWorker::deleteLater);
+	connect(cameraWorker, &CameraWorker::finishedSignal, &cameraThread, &QThread::quit);
 
 	// CAMERA SIGNALS ===================================================
-	connect(this, &CaptureDialog::onNewCameraBlackLevelSignal, camera_worker, &CameraWorker::onNewCameraBlackLevel);
-	connect(this, &CaptureDialog::onNewCameraExposureTimeSignal, camera_worker, &CameraWorker::onNewCameraExposureTime);
-	connect(this, &CaptureDialog::onNewCameraGainSignal, camera_worker, &CameraWorker::onNewCameraGain);
-	connect(this, &CaptureDialog::onNewCameraGammaSignal, camera_worker, &CameraWorker::onNewCameraGamma);
-	connect(camera_worker, &CameraWorker::newCameraSettingsSignal, this, &CaptureDialog::_on_new_camera_settings);
+	connect(this, &CaptureDialog::onNewCameraBlackLevelSignal, cameraWorker, &CameraWorker::onNewCameraBlackLevel);
+	connect(this, &CaptureDialog::onNewCameraExposureTimeSignal, cameraWorker, &CameraWorker::onNewCameraExposureTime);
+	connect(this, &CaptureDialog::onNewCameraGainSignal, cameraWorker, &CameraWorker::onNewCameraGain);
+	connect(this, &CaptureDialog::onNewCameraGammaSignal, cameraWorker, &CameraWorker::onNewCameraGamma);
+	connect(cameraWorker, &CameraWorker::newCameraSettingsSignal, this, &CaptureDialog::_on_new_camera_settings);
 
 	// IMAGE SIGNALS ====================================================
-	connect(camera_worker, &CameraWorker::newFrameReadySignal, this, &CaptureDialog::_on_new_camera_frame);
+	connect(cameraWorker, &CameraWorker::newFrameReadySignal, this, &CaptureDialog::_on_new_camera_frame);
 
-	connect(this, &CaptureDialog::startCaptureSignal, camera_worker, &CameraWorker::onStartCapture);
-	connect(this, &CaptureDialog::endCaptureSignal, camera_worker, &CameraWorker::onEndCapture);
+	connect(this, &CaptureDialog::startCaptureSignal, cameraWorker, &CameraWorker::onStartCapture);
+	connect(this, &CaptureDialog::endCaptureSignal, cameraWorker, &CameraWorker::onEndCapture);
 
-	connect(this, &CaptureDialog::needStoreImageSignal, camera_worker, &CameraWorker::onNeedToStoreImage);
-	connect(camera_worker, &CameraWorker::imageStoredSignal, this, &CaptureDialog::_on_image_stored);
+	connect(this, &CaptureDialog::needStoreImageSignal, cameraWorker, &CameraWorker::onNeedToStoreImage);
+	connect(cameraWorker, &CameraWorker::imageStoredSignal, this, &CaptureDialog::_on_image_stored);
 
-	connect(camera_worker, &CameraWorker::imageSaved, this, &CaptureDialog::_on_image_saved);
-	connect(camera_worker, &CameraWorker::allImagesSavedSignal, this, &CaptureDialog::_on_all_images_saved);
+	connect(cameraWorker, &CameraWorker::imageSaved, this, &CaptureDialog::_on_image_saved);
+	connect(cameraWorker, &CameraWorker::allImagesSavedSignal, this, &CaptureDialog::_on_all_images_saved);
 
 	// ALIGNMENT SIGNALS ================================================
-	connect(this, &CaptureDialog::_on_alignment_signal, camera_worker, &CameraWorker::onAlignmentMode);
+	connect(this, &CaptureDialog::_on_alignment_signal, cameraWorker, &CameraWorker::onAlignmentMode);
 
 	// Start thread.
-	camera_thread.start();
+	cameraThread.start();
 }
 
 /* CAMERA SETTINGS ========================================================================== */
@@ -395,37 +395,37 @@ void CaptureDialog::setup_camera_thread()
 /// <summary>
 /// It emits a signal to update the camera's black level each time the user modifies its value in the UI.
 /// </summary>
-/// <param name="new_value"></param>
-void CaptureDialog::on_camera_black_level_spin_valueChanged(double new_value)
+/// <param name="newValue"></param>
+void CaptureDialog::on_camera_black_level_spin_valueChanged(double newValue)
 {
-	emit onNewCameraBlackLevelSignal(new_value);
+	emit onNewCameraBlackLevelSignal(newValue);
 }
 
 /// <summary>
 /// It emits a signal to update the camera's exposure time each time the user modifies its value in the UI.
 /// </summary>
-/// <param name="new_value"></param>
-void CaptureDialog::on_camera_exposure_spin_valueChanged(double new_value)
+/// <param name="newValue"></param>
+void CaptureDialog::on_camera_exposure_spin_valueChanged(double newValue)
 {
-	emit onNewCameraExposureTimeSignal(new_value);
+	emit onNewCameraExposureTimeSignal(newValue);
 }
 
 /// <summary>
 /// It emits a signal to update the camera's gain each time the user modifies its value in the UI.
 /// </summary>
-/// <param name="new_value"></param>
-void CaptureDialog::on_camera_gain_spin_valueChanged(double new_value)
+/// <param name="newValue"></param>
+void CaptureDialog::on_camera_gain_spin_valueChanged(double newValue)
 {
-	emit onNewCameraGainSignal(new_value);
+	emit onNewCameraGainSignal(newValue);
 }
 
 /// <summary>
 /// It emits a signal to update the camera's gamma each time the user modifies its value in the UI.
 /// </summary>
-/// <param name="new_value"></param>
-void CaptureDialog::on_camera_gamma_spin_valueChanged(double new_value)
+/// <param name="newValue"></param>
+void CaptureDialog::on_camera_gamma_spin_valueChanged(double newValue)
 {
-	emit onNewCameraGammaSignal(new_value);
+	emit onNewCameraGammaSignal(newValue);
 }
 
 /// <summary>
@@ -436,10 +436,10 @@ void CaptureDialog::_on_new_camera_settings(const CameraSettings& settings) cons
 {
 	// Block signals while updating ranges and values to prevent feedback loops
 	// (setValue triggers valueChanged → emits signal to CameraWorker → worker reports back → infinite loop).
-	const QSignalBlocker block_black_level(camera_black_level_spin);
-	const QSignalBlocker block_exposure(camera_exposure_spin);
-	const QSignalBlocker block_gain(camera_gain_spin);
-	const QSignalBlocker block_gamma(camera_gamma_spin);
+	const QSignalBlocker blockBlackLevel(camera_black_level_spin);
+	const QSignalBlocker blockExposure(camera_exposure_spin);
+	const QSignalBlocker blockGain(camera_gain_spin);
+	const QSignalBlocker blockGamma(camera_gamma_spin);
 
 	// Black level.
 	camera_black_level_spin->setMinimum(settings.BlackLevelMin);
@@ -469,18 +469,18 @@ void CaptureDialog::_on_new_camera_settings(const CameraSettings& settings) cons
 /// </summary>
 void CaptureDialog::_on_image_stored()
 {
-	is_storing_image = false;
+	isStoringImage = false;
 }
 
 /// <summary>
 /// Dynamically update the progress bar in the UI so that the user can see the progress of the writing process to the disk.
 /// </summary>
-/// <param name="total_images_to_save"></param>
-/// <param name="current_image_saved"></param>
-void CaptureDialog::_on_image_saved(int total_images_to_save, int current_image_saved) const
+/// <param name="totalImagesToSave"></param>
+/// <param name="currentImageSaved"></param>
+void CaptureDialog::_on_image_saved(int totalImagesToSave, int currentImageSaved) const
 {
-	progress_bar->setMaximum(total_images_to_save);
-	progress_bar->setValue(current_image_saved);
+	progress_bar->setMaximum(totalImagesToSave);
+	progress_bar->setValue(currentImageSaved);
 }
 
 /// <summary>
@@ -488,7 +488,7 @@ void CaptureDialog::_on_image_saved(int total_images_to_save, int current_image_
 /// </summary>
 void CaptureDialog::_on_all_images_saved()
 {
-	is_saving_image = false;
+	isSavingImage = false;
 }
 
 /* PROJECTOR =============================================================================== */
@@ -500,13 +500,13 @@ void CaptureDialog::_on_all_images_saved()
 /// <remarks>
 /// Restores the previous selection if still valid, otherwise falls back to the saved configuration value, or defaults to the first screen.
 /// </remarks>
-int CaptureDialog::update_screen_combo() const
+int CaptureDialog::UpdateScreenCombo() const
 {
 	// Block signals with RAII (automatically unblocked when leaving scope).
 	const QSignalBlocker blocker(screen_combo);
 
 	// Save current selection before clearing.
-	const int previous_index = screen_combo->currentIndex();
+	const int previousIndex = screen_combo->currentIndex();
 	screen_combo->clear();
 
 	// Populate the combo with detected screens.
@@ -520,17 +520,17 @@ int CaptureDialog::update_screen_combo() const
 
 	// Determine which index to select.
 	const int count = screen_combo->count();
-	const int saved_index = APP->config.value(Settings::Projector::Screen, Settings::Projector::ScreenDefaultValue).toInt();
+	const int savedIndex = APP->config.value(Settings::Projector::Screen, Settings::Projector::Screen_Default_Value).toInt();
 
-	if (previous_index >= 0 && previous_index < count)
+	if (previousIndex >= 0 && previousIndex < count)
 	{
 		// Previous selection is still valid.
-		screen_combo->setCurrentIndex(previous_index);
+		screen_combo->setCurrentIndex(previousIndex);
 	}
-	else if (saved_index >= 0 && saved_index < count)
+	else if (savedIndex >= 0 && savedIndex < count)
 	{
 		// Restore from saved configuration.
-		screen_combo->setCurrentIndex(saved_index);
+		screen_combo->setCurrentIndex(savedIndex);
 	}
 	else
 	{
@@ -547,7 +547,7 @@ int CaptureDialog::update_screen_combo() const
 /// <param name="index">Index of the newly selected screen.</param>
 void CaptureDialog::on_screen_combo_currentIndexChanged(int index)
 {
-	projector_widget.set_screen(index);
+	projectorWidget.SetScreen(index);
 }
 
 /// <summary>
@@ -566,17 +566,17 @@ void CaptureDialog::_on_new_projector_image(QPixmap image) const
 /// <param name="state">The new checkbox state (Qt::CheckState).</param>
 void CaptureDialog::on_test_check_stateChanged(int state)
 {
-	const bool is_checked = (state == Qt::Checked);
+	const bool isChecked = (state == Qt::Checked);
 
 	// Toggle GUI controls based on test mode.
-	test_prev_button->setEnabled(is_checked);
-	test_next_button->setEnabled(is_checked);
-	screen_combo->setEnabled(!is_checked);
-	projector_patterns_spin->setEnabled(!is_checked);
-	continuous_check->setEnabled(!is_checked);
-	wait_time_spin->setEnabled(!is_checked);
+	test_prev_button->setEnabled(isChecked);
+	test_next_button->setEnabled(isChecked);
+	screen_combo->setEnabled(!isChecked);
+	projector_patterns_spin->setEnabled(!isChecked);
+	continuous_check->setEnabled(!isChecked);
+	wait_time_spin->setEnabled(!isChecked);
 
-	if (is_checked)
+	if (isChecked)
 	{
 		capture_button->setEnabled(false);
 
@@ -584,15 +584,15 @@ void CaptureDialog::on_test_check_stateChanged(int state)
 		if (!alignment_mode_check->isChecked()) alignment_mode_check->setEnabled(false);
 
 		// Connect the projector display signal for live preview.
-		connect(&projector_widget, &ProjectorWidget::new_image, this, &CaptureDialog::_on_new_projector_image);
+		connect(&projectorWidget, &ProjectorWidget::new_image, this, &CaptureDialog::_on_new_projector_image);
 
 		// Configure and start the projector.
-		projector_widget.set_pattern_count(projector_patterns_spin->value());
-		projector_widget.start();
+		projectorWidget.SetPatternCount(projector_patterns_spin->value());
+		projectorWidget.Start();
 
 		// Skip white (index 0) and black (index 1) to reach the first Gray code pattern.
-		projector_widget.next();
-		projector_widget.next();
+		projectorWidget.Next();
+		projectorWidget.Next();
 
 		// Start automatic advance if continuous mode is enabled.
 		if (continuous_check->isChecked())
@@ -603,8 +603,8 @@ void CaptureDialog::on_test_check_stateChanged(int state)
 	else
 	{
 		// Stop the projector and disconnect the display signal.
-		projector_widget.stop();
-		disconnect(&projector_widget, &ProjectorWidget::new_image, this, &CaptureDialog::_on_new_projector_image);
+		projectorWidget.Stop();
+		disconnect(&projectorWidget, &ProjectorWidget::new_image, this, &CaptureDialog::_on_new_projector_image);
 
 		// Re-enable capture only if alignment mode is not active.
 		capture_button->setEnabled(!alignment_mode_check->isChecked());
@@ -623,8 +623,8 @@ void CaptureDialog::on_test_check_stateChanged(int state)
 /// <param name="checked">Indicates whether the button is in a checked state.</param>
 void CaptureDialog::on_test_prev_button_clicked(bool checked)
 {
-	projector_widget.clear_updated();
-	projector_widget.prev();
+	projectorWidget.ClearUpdated();
+	projectorWidget.Prev();
 }
 
 /// <summary>
@@ -633,8 +633,8 @@ void CaptureDialog::on_test_prev_button_clicked(bool checked)
 /// <param name="checked">Indicates whether the button is in a checked state.</param>
 void CaptureDialog::on_test_next_button_clicked(bool checked)
 {
-	projector_widget.clear_updated();
-	projector_widget.next();
+	projectorWidget.ClearUpdated();
+	projectorWidget.Next();
 }
 
 /// <summary>
@@ -648,14 +648,14 @@ void CaptureDialog::auto_next()
 {
 	if (test_check->isChecked() && continuous_check->isChecked())
 	{
-		projector_widget.clear_updated();
+		projectorWidget.ClearUpdated();
 
-		if (projector_widget.finished())
+		if (projectorWidget.Finished())
 		{
-			projector_widget.start();
+			projectorWidget.Start();
 		}
 
-		projector_widget.next();
+		projectorWidget.Next();
 
 		QTimer::singleShot(continuous_spin->value(), this, SLOT(auto_next()));
 
@@ -676,33 +676,33 @@ void CaptureDialog::auto_next()
 void CaptureDialog::on_capture_button_clicked(bool checked)
 {
 	// Check if there are camera available.
-	if (camera_list.GetSize() == 0)
+	if (cameraList.GetSize() == 0)
 	{
 		capture_button->setChecked(false);
 		return;
 	}
 
 	// Configure output directory.
-	session = APP->get_root_dir() + "/" + QDateTime::currentDateTime().toString("yyyy-MMM-dd_hh.mm.ss.zzz");
-	if (const QDir session_dir; !session_dir.mkpath(session))
+	session = APP->GetRootDir() + "/" + QDateTime::currentDateTime().toString("yyyy-MMM-dd_hh.mm.ss.zzz");
+	if (const QDir sessionDir; !sessionDir.mkpath(session))
 	{
 		qCritical() << "[CaptureDialog::on_capture_button_clicked] --> Can't create output directory" << session << ".";
 		return;
 	}
 
 	// Disable all configurations.
-	disable_controls();
+	DisableControls();
 
 	// Initialize the projector widget.
-	projector_widget.set_pattern_count(projector_patterns_spin->value());
-	projector_widget.start();
+	projectorWidget.SetPatternCount(projector_patterns_spin->value());
+	projectorWidget.Start();
 
 	// Start camera capture.
-	emit startCaptureSignal(projector_widget.get_pattern_count());
+	emit startCaptureSignal(projectorWidget.GetPatternCount());
 
 	// Save projector info.
-	const QString projectorInfoFileName = QString("%1/%2").arg(session).arg(Literals::ProjectorInfoFilename);
-	if (!projector_widget.save_info(projectorInfoFileName, false))
+	const QString projectorInfoFileName = QString("%1/%2").arg(session).arg(Literals::Projector_Info_Filename);
+	if (!projectorWidget.SaveInfo(projectorInfoFileName, false))
 	{
 		qWarning() << "[CaptureModule::on_captureButton_clicked] --> Can't save the projector info.";
 	}
@@ -720,37 +720,37 @@ void CaptureDialog::on_capture_button_clicked(bool checked)
 	QApplication::processEvents();
 
 	// Capture loop.
-	int current_pattern = 0;
-	while (!projector_widget.finished())
+	int currentPattern = 0;
+	while (!projectorWidget.Finished())
 	{
 		// Update the pattern.
-		projector_widget.clear_updated();
-		projector_widget.next();
+		projectorWidget.ClearUpdated();
+		projectorWidget.Next();
 
-		wait_time(100);
+		WaitTime(100);
 
 		// Wait for the projector.
-		while (!projector_widget.is_updated()) QApplication::processEvents();
+		while (!projectorWidget.IsUpdated()) QApplication::processEvents();
 
 		// Update progressbar.
-		current_pattern++;
-		progress_bar->setValue(current_pattern);
+		currentPattern++;
+		progress_bar->setValue(currentPattern);
 
 		// wait.
-		wait_time(wait_time_spin->value());
+		WaitTime(wait_time_spin->value());
 
 		// Send signal.
 		QString imageName = QString("%1/cam_%2.png")
 			.arg(session)
-			.arg(projector_widget.get_current_pattern() + 1, 2, 10, QLatin1Char('0'));
+			.arg(projectorWidget.GetCurrentPattern() + 1, 2, 10, QLatin1Char('0'));
 		emit needStoreImageSignal(imageName);
 
-		is_storing_image = true;
-		while (is_storing_image) QApplication::processEvents();
+		isStoringImage = true;
+		while (isStoringImage) QApplication::processEvents();
 	}
 
 	// De-initialize the projector.
-	projector_widget.stop();
+	projectorWidget.Stop();
 
 	// Switch progress indicators to saving phase.
 	progress_label->setText("Saving images...");
@@ -761,8 +761,8 @@ void CaptureDialog::on_capture_button_clicked(bool checked)
 	// Wait to save images.
 	emit endCaptureSignal();
 
-	is_saving_image = true;
-	while (is_saving_image) QApplication::processEvents();
+	isSavingImage = true;
+	while (isSavingImage) QApplication::processEvents();
 
 	// Hide progress indicators and show completion message.
 	progress_label->setVisible(false);
@@ -771,10 +771,10 @@ void CaptureDialog::on_capture_button_clicked(bool checked)
 	current_message_label->setVisible(true);
 
 	// Reset the TreeView.
-	APP->set_root_dir(APP->get_root_dir());
+	APP->SetRootDir(APP->GetRootDir());
 
 	// Enable all configurations.
-	enable_controls();
+	EnableControls();
 }
 
 /* ALIGNMENT =============================================================================== */
@@ -783,16 +783,16 @@ void CaptureDialog::on_capture_button_clicked(bool checked)
 /// Handles the alignment mode checkbox state change. Enables or disables the projector alignment mode based on the checkbox state. When active, the
 /// projector draws a centered cross over the projected pattern to assist with physical alignment.
 /// </summary>
-/// <param name="new_state">The new checkbox state (Qt::CheckState).</param>
-void CaptureDialog::on_alignment_mode_check_stateChanged(int new_state)
+/// <param name="newState">The new checkbox state (Qt::CheckState).</param>
+void CaptureDialog::on_alignment_mode_check_stateChanged(int newState)
 {
-	const bool is_active = (new_state == Qt::Checked);
+	const bool isActive = (newState == Qt::Checked);
 
-	emit _on_alignment_signal(is_active);
-	projector_widget.set_draw_cross(is_active);
-	projector_widget.clear_updated();
-	test_check->setCheckState(is_active ? Qt::Checked : Qt::Unchecked);
-	test_check->setEnabled(!is_active);
+	emit _on_alignment_signal(isActive);
+	projectorWidget.SetDrawCross(isActive);
+	projectorWidget.ClearUpdated();
+	test_check->setCheckState(isActive ? Qt::Checked : Qt::Unchecked);
+	test_check->setEnabled(!isActive);
 }
 
 /* QDialog FUNCTIONS ======================================================================= */
@@ -812,7 +812,7 @@ void CaptureDialog::_on_root_dir_changed(const QString& dirname) const
 /// <param name="text">New directory path entered by the user.</param>
 void CaptureDialog::on_output_dir_line_textEdited(const QString& text)
 {
-	APP->set_root_dir(text);
+	APP->SetRootDir(text);
 }
 
 /// <summary>
@@ -821,7 +821,7 @@ void CaptureDialog::on_output_dir_line_textEdited(const QString& text)
 /// <param name="checked">Indicates whether the button is in a checked state.</param>
 void CaptureDialog::on_output_dir_button_clicked(bool checked)
 {
-	APP->change_root_dir(this);
+	APP->ChangeRootDir(this);
 }
 
 /// <summary>
@@ -839,7 +839,7 @@ void CaptureDialog::on_close_cancel_button_clicked(bool checked)
 /// Blocks execution for a specified duration while keeping the UI responsive.
 /// </summary>
 /// <param name="milliseconds">Duration to wait in milliseconds.</param>
-void CaptureDialog::wait_time(const int milliseconds)
+void CaptureDialog::WaitTime(const int milliseconds)
 {
 	QElapsedTimer timer;
 	timer.start();
@@ -860,10 +860,10 @@ void CaptureDialog::wait_time(const int milliseconds)
 /// - Camera: camera_combo, camera_exposure_spin, camera_black_level_spin,
 ///   camera_gain_spin, camera_gamma_spin.
 /// - Workspace: output_dir_line, output_dir_button.
-/// Must be called symmetrically with disable_controls() once the pipeline completes
+/// Must be called symmetrically with DisableControls() once the pipeline completes
 /// or is aborted to leave the dialog in a consistent, interactive state.
 /// </remarks>
-void CaptureDialog::enable_controls() const
+void CaptureDialog::EnableControls() const
 {
 	// Projector widgets.
 	screen_combo->setEnabled(true);
@@ -897,10 +897,10 @@ void CaptureDialog::enable_controls() const
 /// - Camera: camera_combo, camera_exposure_spin, camera_black_level_spin,
 ///   camera_gain_spin, camera_gamma_spin.
 /// - Workspace: output_dir_line, output_dir_button.
-/// Must be called at the start of every capture and paired with enable_controls()
+/// Must be called at the start of every capture and paired with EnableControls()
 /// upon completion to restore the dialog to its interactive state.
 /// </remarks>
-void CaptureDialog::disable_controls() const
+void CaptureDialog::DisableControls() const
 {
 	// Projector widgets.
 	screen_combo->setEnabled(false);

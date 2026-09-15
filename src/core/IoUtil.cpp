@@ -25,7 +25,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "core/io_util.h"
+#include "core/IoUtil.h"
 
 #include <QPainter>
 
@@ -38,23 +38,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # define isnan _isnan
 #endif
 
-#include "core/structured_light.h"
+#include "core/StructuredLight.h"
 
 namespace smcp
 {
 
 
-QImage io_util::qImage(const cv::Mat & image)
+QImage IoUtil::ToQImage(const cv::Mat & image)
 {
     switch (image.type())
     {
-    case CV_8UC3: return io_util::qImageFromRGB(image); break;
-    case CV_8UC1: return io_util::qImageFromGray(image); break;
+    case CV_8UC3: return IoUtil::ToQImageFromRGB(image); break;
+    case CV_8UC1: return IoUtil::ToQImageFromGray(image); break;
     }
     return QImage();
 }
 
-QImage io_util::qImageFromRGB(const cv::Mat & image)
+QImage IoUtil::ToQImageFromRGB(const cv::Mat & image)
 {
     if (image.type()!=CV_8UC3)
     {   //unsupported type
@@ -75,7 +75,7 @@ QImage io_util::qImageFromRGB(const cv::Mat & image)
     return qimg;
 }
 
-QImage io_util::qImageFromGray(const cv::Mat & image)
+QImage IoUtil::ToQImageFromGray(const cv::Mat & image)
 {
     if (image.type()!=CV_8UC1)
     {   //unsupported type
@@ -95,7 +95,7 @@ QImage io_util::qImageFromGray(const cv::Mat & image)
     return qimg;
 }
 
-bool io_util::write_pgm(const cv::Mat & image, const char * basename)
+bool IoUtil::WritePgm(const cv::Mat & image, const char * basename)
 {
     if (!image.data || image.type()!=CV_32FC2 || !basename)
     {
@@ -150,7 +150,7 @@ bool io_util::write_pgm(const cv::Mat & image, const char * basename)
     return true;
 }
 
-bool io_util::write_ply(const std::string & filename, scan3d::Pointcloud const& pointcloud, unsigned flags)
+bool IoUtil::WritePly(const std::string & filename, Scan3d::Pointcloud const& pointcloud, unsigned flags)
 {
     if (!pointcloud.points.data
         || (pointcloud.colors.data && pointcloud.colors.rows!=pointcloud.points.rows && pointcloud.colors.cols!=pointcloud.points.cols)
@@ -162,19 +162,19 @@ bool io_util::write_ply(const std::string & filename, scan3d::Pointcloud const& 
     bool binary  = (flags&PlyBinary);
     bool colors = (flags&PlyColors) && pointcloud.colors.data;
     bool normals = (flags&PlyNormals) && pointcloud.normals.data;
-    std::vector<int> points_index;
-    points_index.reserve(pointcloud.points.total());
+    std::vector<int> pointsIndex;
+    pointsIndex.reserve(pointcloud.points.total());
 
-    const cv::Vec3f * points_data = pointcloud.points.ptr<cv::Vec3f>(0);
-    const cv::Vec3b * colors_data = (colors ? pointcloud.colors.ptr<cv::Vec3b>(0) : NULL);
-    const cv::Vec3f * normals_data = (normals ? pointcloud.normals.ptr<cv::Vec3f>(0) : NULL);
+    const cv::Vec3f * pointsData = pointcloud.points.ptr<cv::Vec3f>(0);
+    const cv::Vec3b * colorsData = (colors ? pointcloud.colors.ptr<cv::Vec3b>(0) : NULL);
+    const cv::Vec3f * normalsData = (normals ? pointcloud.normals.ptr<cv::Vec3f>(0) : NULL);
 
     int total = static_cast<int>(pointcloud.points.total());
     for (int i=0; i<total; i++)
     {
-        if (!sl::INVALID(points_data[i]) && (!normals_data || !sl::INVALID(normals_data[i])))
+        if (!StructuredLight::Invalid(pointsData[i]) && (!normalsData || !StructuredLight::Invalid(normalsData[i])))
         {
-            points_index.push_back(i);
+            pointsIndex.push_back(i);
         }
     }
 
@@ -186,11 +186,11 @@ bool io_util::write_ply(const std::string & filename, scan3d::Pointcloud const& 
         return false;
     }
 
-    const char * format_header = (binary? "binary_little_endian 1.0" : "ascii 1.0");
+    const char * formatHeader = (binary? "binary_little_endian 1.0" : "ascii 1.0");
     outfile << "ply" << std::endl 
-            << "format " << format_header << std::endl 
+            << "format " << formatHeader << std::endl 
             << "comment scan3d-capture generated" << std::endl 
-            << "element vertex " << points_index.size() << std::endl 
+            << "element vertex " << pointsIndex.size() << std::endl 
             << "property float x" << std::endl 
             << "property float y" << std::endl 
             << "property float z" << std::endl;
@@ -211,9 +211,9 @@ bool io_util::write_ply(const std::string & filename, scan3d::Pointcloud const& 
             << "property list uchar int vertex_indices" << std::endl 
             << "end_header" << std::endl ;
 
-    for(std::vector<int>::const_iterator iter=points_index.begin(); iter!=points_index.end(); iter++)
+    for(std::vector<int>::const_iterator iter=pointsIndex.begin(); iter!=pointsIndex.end(); iter++)
     {
-        cv::Vec3f const& p = points_data[*iter];
+        cv::Vec3f const& p = pointsData[*iter];
         if (binary)
         {
             outfile.write(reinterpret_cast<const char *>(&(p[0])), sizeof(float));
@@ -221,14 +221,14 @@ bool io_util::write_ply(const std::string & filename, scan3d::Pointcloud const& 
             outfile.write(reinterpret_cast<const char *>(&(p[2])), sizeof(float));
             if (normals)
             {
-                cv::Vec3f const& n = normals_data[*iter];
+                cv::Vec3f const& n = normalsData[*iter];
                 outfile.write(reinterpret_cast<const char *>(&(n[0])), sizeof(float));
                 outfile.write(reinterpret_cast<const char *>(&(n[1])), sizeof(float));
                 outfile.write(reinterpret_cast<const char *>(&(n[2])), sizeof(float));
             }
             if (colors)
             {
-                cv::Vec3b const& c = colors_data[*iter];
+                cv::Vec3b const& c = colorsData[*iter];
                 const unsigned char a = 255U;
                 outfile.write(reinterpret_cast<const char *>(&(c[2])), sizeof(unsigned char));
                 outfile.write(reinterpret_cast<const char *>(&(c[1])), sizeof(unsigned char));
@@ -241,12 +241,12 @@ bool io_util::write_ply(const std::string & filename, scan3d::Pointcloud const& 
             outfile << p[0] << " " << p[1] << " "  << p[2];
             if (normals)
             {
-                cv::Vec3f const& n = normals_data[*iter];
+                cv::Vec3f const& n = normalsData[*iter];
                 outfile << " " << n[0] << " " << n[1] << " " << n[2];
             }
             if (colors)
             {
-                cv::Vec3b const& c = colors_data[*iter];
+                cv::Vec3b const& c = colorsData[*iter];
                 outfile << " " << static_cast<int>(c[2]) << " " << static_cast<int>(c[1]) << " " << static_cast<int>(c[0]) << " 255";
             }
             outfile << std::endl;
@@ -254,7 +254,7 @@ bool io_util::write_ply(const std::string & filename, scan3d::Pointcloud const& 
     }
 
     outfile.close();
-    std::cerr << "[write_ply] Saved " << points_index.size() << " points (" << filename << ")" << std::endl;
+    std::cerr << "[WritePly] Saved " << pointsIndex.size() << " points (" << filename << ")" << std::endl;
     return true;
 }
 

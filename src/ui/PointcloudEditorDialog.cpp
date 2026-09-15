@@ -1,11 +1,13 @@
 #include "ui/PointcloudEditorDialog.h"
 
+#include <iterator>
+
 #include <QApplication>
 #include <QCursor>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QIcon>
+#include <QSignalBlocker>
 
 #include "export/IOExport.h"
 
@@ -14,54 +16,56 @@ namespace smcp
 
 namespace
 {
-	/// Colores para distinguir los planos detectados.
-	const QColor kPlaneColors[] = {
+	/// Memory allowed for parsed clouds kept in the cache (~30 million points).
+	constexpr std::size_t Cloud_Cache_Budget_Bytes = 512 * 1024 * 1024;
+
+	/// Colors used to tell the detected planes apart.
+	const QColor Plane_Colors[] = {
 		QColor(4, 92, 195), QColor(237, 167, 59), QColor(62, 137, 62), QColor(60, 151, 139),
 		QColor(228, 59, 68), QColor(26, 188, 156), QColor(230, 126, 34), QColor(149, 165, 166)
 	};
 
-	/// Colores para distinguir las esferas detectadas.
-	const QColor kSphereColors[] = {
+	/// Colors used to tell the detected spheres apart.
+	const QColor Sphere_Colors[] = {
 		QColor(231, 76, 60), QColor(52, 152, 219), QColor(46, 204, 113), QColor(241, 196, 15),
 		QColor(155, 89, 182), QColor(26, 188, 156), QColor(230, 126, 34), QColor(149, 165, 166)
 	};
 
 	template <std::size_t N>
-	const QColor& color_at(const QColor (&colors)[N], std::size_t i) { return colors[i % N]; }
+	const QColor& ColorAt(const QColor (&colors)[N], std::size_t i) { return colors[i % N]; }
 } // namespace
 
-/* Construccion ============================================================================ */
+/* Construction ============================================================================ */
 
-PointcloudEditorDialog::PointcloudEditorDialog(const QString& root_dir, QWidget* parent, Qt::WindowFlags flags)
-	: QDialog(parent, flags), _root_dir(root_dir)
+PointcloudEditorDialog::PointcloudEditorDialog(const QString& rootDir, QWidget* parent, Qt::WindowFlags flags)
+	: QDialog(parent, flags), _rootDir(rootDir)
 {
 	setupUi(this);
-	add_fit_models();
-	update_pointcloud_combo();
-	set_status(QString());
+	AddFitModels();
+	UpdatePointcloudCombo();
+	SetStatus(QString());
 	showMaximized();
 }
 
 PointcloudEditorDialog::~PointcloudEditorDialog() = default;
 
-/// Registra los modelos ajustables en el desplegable. Para anadir uno: nuevo valor en
-/// FitModel, una entrada aqui y su rama en on_fit_button_clicked().
-void PointcloudEditorDialog::add_fit_models()
+/// Registers the fittable models in the combo box. To add one: a new value in
+/// FitModel, an entry here and its branch in on_fit_button_clicked().
+void PointcloudEditorDialog::AddFitModels()
 {
 	fit_model_combo->clear();
-	fit_model_combo->addItem(QIcon(":/icon-plane.svg"), tr("Plane"), static_cast<int>(FitModel::Plane));
-	fit_model_combo->addItem(QIcon(":/icon-sphere.svg"), tr("Sphere"), static_cast<int>(FitModel::Sphere));
-	on_fit_model_combo_currentIndexChanged(fit_model_combo->currentIndex());
+	fit_model_combo->addItem(tr("Plane"), static_cast<int>(FitModel::Plane));
+	fit_model_combo->addItem(tr("Sphere"), static_cast<int>(FitModel::Sphere));
 }
 
-void PointcloudEditorDialog::set_status(const QString& text)
+void PointcloudEditorDialog::SetStatus(const QString& text)
 {
 	status_label->setText(text);
 }
 
-/// Deshabilita la barra de comandos y muestra el cursor de espera mientras un comando
-/// se ejecuta en segundo plano.
-void PointcloudEditorDialog::set_busy(bool busy)
+/// Disables the command bar and shows the wait cursor while a command runs in the
+/// background.
+void PointcloudEditorDialog::SetBusy(bool busy)
 {
 	if (_busy == busy)
 	{
@@ -86,16 +90,16 @@ void PointcloudEditorDialog::set_busy(bool busy)
 	}
 }
 
-void PointcloudEditorDialog::reset_result()
+void PointcloudEditorDialog::ResetResult()
 {
-	_current_cloud.reset();
-	_original_cloud.reset();
+	_currentCloud.reset();
+	_originalCloud.reset();
 	_planes.clear();
-	_last_command = LastCommand::None;
-	preview_widget->clearPointclouds();
+	_lastCommand = LastCommand::None;
+	preview_widget->ClearPointclouds();
 }
 
-/// El boton de cierre de la ventana no interrumpe un comando en curso.
+/// The window close button does not interrupt a command already in progress.
 void PointcloudEditorDialog::reject()
 {
 	if (_busy)
@@ -105,184 +109,253 @@ void PointcloudEditorDialog::reject()
 	QDialog::reject();
 }
 
-/* Nube de puntos ========================================================================== */
+/* Point cloud ============================================================================= */
 
-void PointcloudEditorDialog::update_pointcloud_combo()
+void PointcloudEditorDialog::UpdatePointcloudCombo()
 {
-	pointcloud_combo->clear();
+	const QDir dir(_rootDir);
+	const QStringList names = dir.entryList({ "*.xyz" }, QDir::Files, QDir::Name);
 
-	const QDir dir(_root_dir);
-	for (const QFileInfo& file : dir.entryInfoList({ "*.xyz" }, QDir::Files, QDir::Name))
+	// Populate with signals blocked so clearing and each insertion do not reset or load anything;
+	// the selected file is loaded once at the end.
 	{
-		pointcloud_combo->addItem(file.fileName());
+		const QSignalBlocker blocker(pointcloud_combo);
+		pointcloud_combo->clear();
+		pointcloud_combo->addItems(names);
+	}
+
+	for (auto it = _cloudCache.begin(); it != _cloudCache.end();)
+	{
+		it = names.contains(QFileInfo(it->first).fileName()) ? std::next(it) : _cloudCache.erase(it);
+	}
+
+	on_pointcloud_combo_currentIndexChanged(pointcloud_combo->currentIndex());
+}
+
+Pointcloud::ColorCloudPtr PointcloudEditorDialog::FindCachedPointcloud(const QString& path, qint64 fileSize,
+	const QDateTime& lastModified)
+{
+	const auto it = _cloudCache.find(path);
+	if (it == _cloudCache.end())
+	{
+		return nullptr;
+	}
+	if (it->second.fileSize != fileSize || it->second.lastModified != lastModified)
+	{
+		_cloudCache.erase(it);
+		return nullptr;
+	}
+	it->second.lastUse = ++_cacheUseCounter;
+	return it->second.cloud;
+}
+
+void PointcloudEditorDialog::StoreCachedPointcloud(const QString& path, qint64 fileSize, const QDateTime& lastModified,
+	const Pointcloud::ColorCloudPtr& cloud)
+{
+	_cloudCache[path] = CachedPointcloud{ cloud, fileSize, lastModified, ++_cacheUseCounter };
+
+	// Evict least recently used clouds beyond the memory budget, always keeping the one just stored.
+	const auto bytesOf = [](const CachedPointcloud& entry) { return entry.cloud->size() * sizeof(Pointcloud::ColorPoint); };
+	std::size_t totalBytes = 0;
+	for (const auto& entry : _cloudCache)
+	{
+		totalBytes += bytesOf(entry.second);
+	}
+	while (totalBytes > Cloud_Cache_Budget_Bytes && _cloudCache.size() > 1)
+	{
+		auto oldest = _cloudCache.end();
+		for (auto it = _cloudCache.begin(); it != _cloudCache.end(); ++it)
+		{
+			if (it->first != path && (oldest == _cloudCache.end() || it->second.lastUse < oldest->second.lastUse))
+			{
+				oldest = it;
+			}
+		}
+		totalBytes -= bytesOf(oldest->second);
+		_cloudCache.erase(oldest);
 	}
 }
 
 void PointcloudEditorDialog::on_refresh_button_clicked(bool)
 {
-	update_pointcloud_combo();
+	UpdatePointcloudCombo();
 }
 
 void PointcloudEditorDialog::on_pointcloud_combo_currentIndexChanged(int index)
 {
-	reset_result();
+	ResetResult();
 	if (index < 0 || pointcloud_combo->currentText().isEmpty())
 	{
 		return;
 	}
 
 	const QString name = pointcloud_combo->currentText();
-	const std::string filepath = (_root_dir + "/" + name).toStdString();
+	const QString path = QDir(_rootDir).absoluteFilePath(name);
+	const QFileInfo info(path);
+	const qint64 fileSize = info.size();
+	const QDateTime lastModified = info.lastModified();
+	const Pointcloud::ColorCloudPtr cached = FindCachedPointcloud(path, fileSize, lastModified);
 
-	run_async<pointcloud::ColorCloudPtr>(
-		tr("Cargando nube de puntos..."),
-		[filepath]() {
-			auto cloud = std::make_shared<pointcloud::ColorCloud>();
-			return IOExport::read_xyz(filepath, *cloud) ? cloud : pointcloud::ColorCloudPtr();
-		},
-		[this, name](const pointcloud::ColorCloudPtr& cloud) {
-			if (!cloud)
+	// Reading and building the GPU buffer both happen on the worker thread; the result travels in a
+	// shared_ptr so leaving the QFuture copies no point data.
+	RunAsync<std::shared_ptr<LoadedPointcloud>>(
+		tr("Loading point cloud..."),
+		[filepath = path.toStdString(), cached, name]() {
+			auto result = std::make_shared<LoadedPointcloud>();
+			result->cloud = cached;
+			if (!result->cloud)
 			{
-				set_status(tr("Error: no se pudo abrir %1.").arg(name));
+				auto cloud = std::make_shared<Pointcloud::ColorCloud>();
+				if (!IOExport::ReadXyz(filepath, *cloud))
+				{
+					return result;
+				}
+				result->cloud = std::move(cloud);
+			}
+			result->prepared = PointcloudPreviewWidget::PreparePointcloud(*result->cloud, QColor(), name);
+			return result;
+		},
+		[this, name, path, fileSize, lastModified, cached](const std::shared_ptr<LoadedPointcloud>& result) {
+			if (!result->cloud)
+			{
+				SetStatus(tr("Error: could not open %1.").arg(name));
 				return;
 			}
-			_current_cloud = cloud;
-			_original_cloud = std::make_shared<pointcloud::ColorCloud>(*cloud);  // copia para comparar
-			preview_widget->addPointcloud(_current_cloud, QColor(), name);
-			set_status(tr("Nube de puntos cargada (%1 puntos).").arg(_current_cloud->size()));
+			if (!cached)
+			{
+				StoreCachedPointcloud(path, fileSize, lastModified, result->cloud);
+			}
+			_currentCloud = result->cloud;
+			_originalCloud = result->cloud;
+			preview_widget->AddPreparedPointcloud(std::move(result->prepared));
+			SetStatus(tr("Point cloud loaded (%1 points).").arg(_currentCloud->size()));
 		});
 }
 
-/* Comandos ================================================================================ */
+/* Commands ================================================================================ */
 
 void PointcloudEditorDialog::on_remove_outliers_button_clicked(bool)
 {
-	if (!_current_cloud || _current_cloud->empty())
+	if (!_currentCloud || _currentCloud->empty())
 	{
-		set_status(tr("No hay nube de puntos cargada."));
+		SetStatus(tr("No point cloud loaded."));
 		return;
 	}
 
-	const pointcloud::ColorCloudPtr input = _current_cloud;
-	run_async<pointcloud::ColorCloudPtr>(
-		tr("Removiendo outliers..."),
+	const Pointcloud::ColorCloudPtr input = _currentCloud;
+	RunAsync<Pointcloud::ColorCloudPtr>(
+		tr("Removing outliers..."),
 		[input]() {
-			pointcloud::OutlierRemovalParams params;  // k = 50, 1.0 desviaciones
-			return pointcloud::remove_statistical_outliers(*input, params);
+			Pointcloud::OutlierRemovalParams params;  // k = 50, 1.0 standard deviations
+			return Pointcloud::RemoveStatisticalOutliers(*input, params);
 		},
-		[this, input](const pointcloud::ColorCloudPtr& filtered) {
+		[this, input](const Pointcloud::ColorCloudPtr& filtered) {
 			const auto removed = input->size() - filtered->size();
-			_current_cloud = filtered;
+			_currentCloud = filtered;
 			_planes.clear();
-			_last_command = LastCommand::Other;
+			_lastCommand = LastCommand::Other;
 
-			preview_widget->clearPointclouds();
-			preview_widget->addPointcloud(_current_cloud, QColor(), tr("Filtrada"));
-			preview_widget->addPointcloud(_original_cloud, QColor(Qt::red), tr("Original"));
+			preview_widget->ClearPointclouds();
+			preview_widget->AddPointcloud(_currentCloud, QColor(), tr("Filtered"));
+			preview_widget->AddPointcloud(_originalCloud, QColor(Qt::red), tr("Original"));
 
-			set_status(tr("Outliers removidos (%1 puntos eliminados, %2 restantes).").arg(removed).arg(_current_cloud->size()));
+			SetStatus(tr("Outliers removed (%1 points discarded, %2 remaining).").arg(removed).arg(_currentCloud->size()));
 		});
-}
-
-void PointcloudEditorDialog::on_fit_model_combo_currentIndexChanged(int index)
-{
-	// El boton "Fit" muestra el icono del modelo elegido.
-	fit_button->setIcon(fit_model_combo->itemIcon(index));
 }
 
 void PointcloudEditorDialog::on_fit_button_clicked(bool)
 {
-	if (!_current_cloud || _current_cloud->empty())
+	if (!_currentCloud || _currentCloud->empty())
 	{
-		set_status(tr("No hay nube de puntos cargada para ajustar un modelo."));
+		SetStatus(tr("No point cloud loaded to fit a model to."));
 		return;
 	}
 
 	switch (static_cast<FitModel>(fit_model_combo->currentData().toInt()))
 	{
 	case FitModel::Plane:
-		fit_planes();
+		FitPlanes();
 		break;
 	case FitModel::Sphere:
-		fit_spheres();
+		FitSpheres();
 		break;
 	}
 }
 
-/// Extrae los planos dominantes por RANSAC y los muestra coloreados.
-void PointcloudEditorDialog::fit_planes()
+/// Extracts the dominant planes with RANSAC and displays them color-coded.
+void PointcloudEditorDialog::FitPlanes()
 {
-	const pointcloud::ColorCloudPtr input = _current_cloud;
-	run_async<std::vector<pointcloud::PlaneFit>>(
-		tr("Detectando planos..."),
+	const Pointcloud::ColorCloudPtr input = _currentCloud;
+	RunAsync<std::vector<Pointcloud::PlaneFit>>(
+		tr("Detecting planes..."),
 		[input]() {
-			pointcloud::PlaneFitParams params;  // hasta 5 planos, 1000 iteraciones, umbral 0.5
-			return pointcloud::fit_planes(*input, params);
+			Pointcloud::PlaneFitParams params;  // up to 5 planes, 1000 iterations, threshold 0.5
+			return Pointcloud::FitPlanes(*input, params);
 		},
-		[this](const std::vector<pointcloud::PlaneFit>& planes) {
-			preview_widget->clearPointclouds();
+		[this](const std::vector<Pointcloud::PlaneFit>& planes) {
+			preview_widget->ClearPointclouds();
 			_planes.clear();
 
 			if (planes.empty())
 			{
-				_last_command = LastCommand::Other;
-				set_status(tr("No se pudieron estimar planos para la nube de puntos."));
+				_lastCommand = LastCommand::Other;
+				SetStatus(tr("No planes could be estimated for the point cloud."));
 				return;
 			}
 
-			auto merged = std::make_shared<pointcloud::ColorCloud>();
+			auto merged = std::make_shared<Pointcloud::ColorCloud>();
 			for (std::size_t i = 0; i < planes.size(); ++i)
 			{
 				_planes.push_back(planes[i].points);
 				merged->insert(merged->end(), planes[i].points->begin(), planes[i].points->end());
-				preview_widget->addPointcloud(planes[i].points, color_at(kPlaneColors, i), tr("Plano %1").arg(i + 1));
+				preview_widget->AddPointcloud(planes[i].points, ColorAt(Plane_Colors, i), tr("Plane %1").arg(i + 1));
 			}
 
-			_current_cloud = merged;
-			_last_command = LastCommand::FitPlanes;
-			set_status(tr("Se detectaron %1 plano(s) con %2 puntos en total.").arg(planes.size()).arg(_current_cloud->size()));
+			_currentCloud = merged;
+			_lastCommand = LastCommand::FitPlanes;
+			SetStatus(tr("Detected %1 plane(s) with %2 points in total.").arg(planes.size()).arg(_currentCloud->size()));
 		});
 }
 
-/// Elimina primero los planos dominantes (RANSAC con 3 puntos converge facil) y ajusta
-/// esferas sobre el resto: asi la fraccion de inliers de esfera es suficiente para que
-/// RANSAC con 4 puntos converja en pocos miles de iteraciones.
-void PointcloudEditorDialog::fit_spheres()
+/// Removes the dominant planes first (RANSAC with 3 points converges easily) and fits
+/// spheres on what is left: this way the sphere inlier fraction is high enough for
+/// RANSAC with 4 points to converge within a few thousand iterations.
+void PointcloudEditorDialog::FitSpheres()
 {
-	const pointcloud::ColorCloudPtr input = _current_cloud;
-	run_async<std::vector<pointcloud::SphereFit>>(
-		tr("Detectando esferas..."),
+	const Pointcloud::ColorCloudPtr input = _currentCloud;
+	RunAsync<std::vector<Pointcloud::SphereFit>>(
+		tr("Detecting spheres..."),
 		[input]() {
-			pointcloud::ColorCloudPtr remaining;
-			pointcloud::fit_planes(*input, pointcloud::PlaneFitParams(), &remaining);
+			Pointcloud::ColorCloudPtr remaining;
+			Pointcloud::FitPlanes(*input, Pointcloud::PlaneFitParams(), &remaining);
 			if (!remaining)
 			{
-				remaining = std::make_shared<pointcloud::ColorCloud>();
+				remaining = std::make_shared<Pointcloud::ColorCloud>();
 			}
 
-			pointcloud::SphereFitParams params;  // hasta 5 esferas, umbral 0.25, radio en [1, 10000]
-			params.min_inliers = std::max<std::size_t>(50u, input->size() / 100u);
-			return pointcloud::fit_spheres(*remaining, params);
+			Pointcloud::SphereFitParams params;  // up to 5 spheres, threshold 0.25, radius in [1, 10000]
+			params.minInliers = std::max<std::size_t>(50u, input->size() / 100u);
+			return Pointcloud::FitSpheres(*remaining, params);
 		},
-		[this](const std::vector<pointcloud::SphereFit>& spheres) {
-			preview_widget->clearPointclouds();
+		[this](const std::vector<Pointcloud::SphereFit>& spheres) {
+			preview_widget->ClearPointclouds();
 			_planes.clear();
 
 			if (spheres.empty())
 			{
-				_last_command = LastCommand::Other;
-				set_status(tr("No se pudieron estimar esferas para la nube de puntos."));
+				_lastCommand = LastCommand::Other;
+				SetStatus(tr("No spheres could be estimated for the point cloud."));
 				return;
 			}
 
-			auto merged = std::make_shared<pointcloud::ColorCloud>();
+			auto merged = std::make_shared<Pointcloud::ColorCloud>();
 			QStringList details;
 			for (std::size_t i = 0; i < spheres.size(); ++i)
 			{
 				const auto& sphere = spheres[i];
 				merged->insert(merged->end(), sphere.points->begin(), sphere.points->end());
-				preview_widget->addPointcloud(sphere.points, color_at(kSphereColors, i), tr("Esfera %1").arg(i + 1));
-				details << tr("esfera %1: centro=(%2, %3, %4) radio=%5 (%6 puntos)")
+				preview_widget->AddPointcloud(sphere.points, ColorAt(Sphere_Colors, i), tr("Sphere %1").arg(i + 1));
+				details << tr("sphere %1: center=(%2, %3, %4) radius=%5 (%6 points)")
 					.arg(i + 1)
 					.arg(sphere.model.center.x, 0, 'f', 3)
 					.arg(sphere.model.center.y, 0, 'f', 3)
@@ -291,34 +364,34 @@ void PointcloudEditorDialog::fit_spheres()
 					.arg(sphere.points->size());
 			}
 
-			_current_cloud = merged;
-			_last_command = LastCommand::FitSpheres;
-			set_status(tr("Se detectaron %1 esfera(s) con %2 puntos en total: %3")
+			_currentCloud = merged;
+			_lastCommand = LastCommand::FitSpheres;
+			SetStatus(tr("Detected %1 sphere(s) with %2 points in total: %3")
 				.arg(spheres.size())
-				.arg(_current_cloud->size())
+				.arg(_currentCloud->size())
 				.arg(details.join("; ")));
 		});
 }
 
 void PointcloudEditorDialog::on_save_button_clicked(bool)
 {
-	if (!_current_cloud || _current_cloud->empty())
+	if (!_currentCloud || _currentCloud->empty())
 	{
-		set_status(tr("No hay nube de puntos para guardar."));
+		SetStatus(tr("No point cloud to save."));
 		return;
 	}
 
-	const QString filepath = QFileDialog::getSaveFileName(this, tr("Guardar nube de puntos"), _root_dir,
+	const QString filepath = QFileDialog::getSaveFileName(this, tr("Save point cloud"), _rootDir,
 		tr("Point Cloud (*.xyz);;All files (*)"));
 	if (filepath.isEmpty())
 	{
 		return;
 	}
 
-	set_status(tr("Guardando..."));
+	SetStatus(tr("Saving..."));
 
-	// Tras "Fit Plane" se guarda un archivo por plano: <nombre>_1.xyz, <nombre>_2.xyz, ...
-	if (_last_command == LastCommand::FitPlanes && !_planes.empty())
+	// After "Fit Plane" one file per plane is written: <name>_1.xyz, <name>_2.xyz, ...
+	if (_lastCommand == LastCommand::FitPlanes && !_planes.empty())
 	{
 		const QFileInfo info(filepath);
 		const QString suffix = info.suffix();
@@ -327,22 +400,22 @@ void PointcloudEditorDialog::on_save_button_clicked(bool)
 			const QString name = suffix.isEmpty()
 				? QString("%1_%2").arg(info.completeBaseName()).arg(i + 1)
 				: QString("%1_%2.%3").arg(info.completeBaseName()).arg(i + 1).arg(suffix);
-			if (!IOExport::write_xyz(QDir(info.absolutePath()).filePath(name).toStdString(), *_planes[i]))
+			if (!IOExport::WriteXyz(QDir(info.absolutePath()).filePath(name).toStdString(), *_planes[i]))
 			{
-				set_status(tr("Error: no se pudieron guardar todos los planos."));
+				SetStatus(tr("Error: not all planes could be saved."));
 				return;
 			}
 		}
-		set_status(tr("Guardados %1 plano(s) usando el prefijo %2.").arg(_planes.size()).arg(info.fileName()));
+		SetStatus(tr("Saved %1 plane(s) using the prefix %2.").arg(_planes.size()).arg(info.fileName()));
 		return;
 	}
 
-	if (!IOExport::write_xyz(filepath.toStdString(), *_current_cloud))
+	if (!IOExport::WriteXyz(filepath.toStdString(), *_currentCloud))
 	{
-		set_status(tr("Error: no se pudo abrir el archivo para escritura."));
+		SetStatus(tr("Error: could not open the file for writing."));
 		return;
 	}
-	set_status(tr("Guardado: %1 (%2 puntos).").arg(QFileInfo(filepath).fileName()).arg(_current_cloud->size()));
+	SetStatus(tr("Saved: %1 (%2 points).").arg(QFileInfo(filepath).fileName()).arg(_currentCloud->size()));
 }
 
 void PointcloudEditorDialog::on_close_button_clicked(bool)
@@ -351,7 +424,7 @@ void PointcloudEditorDialog::on_close_button_clicked(bool)
 	{
 		return;
 	}
-	reset_result();
+	ResetResult();
 	accept();
 }
 

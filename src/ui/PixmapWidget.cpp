@@ -21,10 +21,10 @@ namespace smcp
 /// <param name="flags">Window flags (passed to QWidget).</param>
 PixmapWidget::PixmapWidget(QWidget* parent, Qt::WindowFlags flags)
 	: QWidget(parent, flags)
-	, current_pixmap()
-	, cached_scaled()
-	, last_cached_size()
-	, cache_valid(false)
+	, currentPixmap()
+	, cachedScaled()
+	, lastCachedSize()
+	, cacheValid(false)
 	, mutex()
 {
 }
@@ -59,7 +59,7 @@ void PixmapWidget::setImage(const cv::Mat& image)
 	// Store the converted pixmap and schedule a repaint.
 	{
 		QMutexLocker locker(&mutex);
-		current_pixmap = converted;
+		currentPixmap = converted;
 		invalidateCache();
 	}
 	update();
@@ -69,7 +69,7 @@ void PixmapWidget::setImage(const QPixmap& pixmap)
 {
 	{
 		QMutexLocker locker(&mutex);
-		current_pixmap = pixmap;
+		currentPixmap = pixmap;
 		invalidateCache();
 	}
 	update();
@@ -82,16 +82,16 @@ void PixmapWidget::setPixmap(const QPixmap& pixmap)
 
 const QPixmap* PixmapWidget::pixmap() const
 {
-	return &current_pixmap;
+	return &currentPixmap;
 }
 
-void PixmapWidget::clear()
+void PixmapWidget::Clear()
 {
 	{
 		QMutexLocker locker(&mutex);
-		current_pixmap = QPixmap();
-		cached_scaled = QPixmap();
-		cache_valid = false;
+		currentPixmap = QPixmap();
+		cachedScaled = QPixmap();
+		cacheValid = false;
 	}
 	update();
 }
@@ -105,7 +105,7 @@ void PixmapWidget::paintEvent(QPaintEvent* event)
 	Q_UNUSED(event);
 	QPainter painter(this);
 
-	if (current_pixmap.isNull())
+	if (currentPixmap.isNull())
 	{
 		// No image available; display a centred placeholder text.
 		painter.drawText(rect(), Qt::AlignCenter | Qt::TextWordWrap, tr("No image"));
@@ -113,17 +113,17 @@ void PixmapWidget::paintEvent(QPaintEvent* event)
 	}
 
 	// Rebuild the scaled pixmap only when the cache is stale.
-	if (!cache_valid || last_cached_size != size())
+	if (!cacheValid || lastCachedSize != size())
 	{
-		cached_scaled = current_pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-		last_cached_size = size();
-		cache_valid = true;
+		cachedScaled = currentPixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+		lastCachedSize = size();
+		cacheValid = true;
 	}
 
 	// Draw the cached scaled pixmap centred within the widget.
-	const int x = (width() - cached_scaled.width()) / 2;
-	const int y = (height() - cached_scaled.height()) / 2;
-	painter.drawPixmap(x, y, cached_scaled);
+	const int x = (width() - cachedScaled.width()) / 2;
+	const int y = (height() - cachedScaled.height()) / 2;
+	painter.drawPixmap(x, y, cachedScaled);
 }
 
 void PixmapWidget::resizeEvent(QResizeEvent* event)
@@ -131,7 +131,7 @@ void PixmapWidget::resizeEvent(QResizeEvent* event)
 	QWidget::resizeEvent(event);
 
 	// Invalidate the cache so paintEvent recomputes at the new size.
-	cache_valid = false;
+	cacheValid = false;
 }
 
 /* ============================================================================================= */
@@ -184,7 +184,7 @@ QPixmap PixmapWidget::pixmapFromGray(const cv::Mat& gray)
 
 void PixmapWidget::invalidateCache()
 {
-	cache_valid = false;
+	cacheValid = false;
 }
 
 } // namespace smcp

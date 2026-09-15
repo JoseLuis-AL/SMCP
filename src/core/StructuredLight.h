@@ -1,5 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
+Copyright (c) 2024, José Luis Aguilera Luzania
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,29 +39,29 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace smcp
 {
-namespace sl
+namespace StructuredLight
 {
     enum DecodeFlags {SimpleDecode = 0x00, GrayPatternDecode = 0x01, RobustDecode = 0x02};
 
-    extern const float PIXEL_UNCERTAIN;
-    extern const unsigned short BIT_UNCERTAIN;
+    extern const float Pixel_Uncertain;
+    extern const unsigned short Bit_Uncertain;
 
-    bool decode_pattern(const std::vector<std::string> & images, cv::Mat & pattern_image, cv::Mat & min_max_image, cv::Size const& projector_size,
-                        unsigned flags = SimpleDecode, const cv::Mat & direct_light = cv::Mat(), unsigned m = 5);
-    unsigned short get_robust_bit(unsigned value1, unsigned value2, unsigned Ld, unsigned Lg, unsigned m);
-    void convert_pattern(cv::Mat & pattern_image, cv::Size const& projector_size, const int offset[2], bool binary);
-    cv::Mat estimate_direct_light(const std::vector<cv::Mat> & images, float b);
+    bool DecodePattern(const std::vector<std::string> & images, cv::Mat & patternImage, cv::Mat & minMaxImage, cv::Size const& projectorSize,
+                        unsigned flags = SimpleDecode, const cv::Mat & directLight = cv::Mat(), unsigned m = 5);
+    unsigned short GetRobustBit(unsigned value1, unsigned value2, unsigned Ld, unsigned Lg, unsigned m);
+    void ConvertPattern(cv::Mat & patternImage, cv::Size const& projectorSize, const int offset[2], bool binary);
+    cv::Mat EstimateDirectLight(const std::vector<cv::Mat> & images, float b);
 
-    cv::Mat get_gray_image(const std::string & filename);
-    static inline bool INVALID(float value) {return _isnan(value)>0;}
-    static inline bool INVALID(const cv::Vec2f & pt) {return _isnan(pt[0]) || _isnan(pt[1]);}
-    static inline bool INVALID(const cv::Vec3f & pt) {return _isnan(pt[0]) || _isnan(pt[1]) || _isnan(pt[2]);}
+    cv::Mat GetGrayImage(const std::string & filename);
+    static inline bool Invalid(float value) {return _isnan(value)>0;}
+    static inline bool Invalid(const cv::Vec2f & pt) {return _isnan(pt[0]) || _isnan(pt[1]);}
+    static inline bool Invalid(const cv::Vec3f & pt) {return _isnan(pt[0]) || _isnan(pt[1]) || _isnan(pt[2]);}
 
-    int binaryToGray(int value);
-    inline int binaryToGray(int value, unsigned offset);
-    inline int grayToBinary(int value, unsigned offset);
+    int BinaryToGray(int value);
+    inline int BinaryToGray(int value, unsigned offset);
+    inline int GrayToBinary(int value, unsigned offset);
 
-    cv::Mat colorize_pattern(const cv::Mat & pattern_image, unsigned set, float max_value);
+    cv::Mat ColorizePattern(const cv::Mat & patternImage, unsigned set, float maxValue);
 };
 
 } // namespace smcp

@@ -46,40 +46,40 @@ TreeModel::TreeModel(unsigned columns, QObject * parent) :
 {
 }
 
-TreeModel::Item * TreeModel::get_item(const QModelIndex & index)
+TreeModel::Item * TreeModel::GetItem(const QModelIndex & index)
 {
     return reinterpret_cast<Item *>(index.internalPointer());
 }
 
-const TreeModel::Item * TreeModel::get_item(const QModelIndex & index) const
+const TreeModel::Item * TreeModel::GetItem(const QModelIndex & index) const
 {
-    return const_cast<TreeModel *>(this)->get_item(index);
+    return const_cast<TreeModel *>(this)->GetItem(index);
 }
 
 QModelIndex TreeModel::index(int row, int column, const QModelIndex & parent) const
 {
-    const Item * item = get_item(parent);
+    const Item * item = GetItem(parent);
     if (!item)
     {
         item = &_root;
     }
 
-    return createIndex(row, column, const_cast<Item *>(item->child(row)));
+    return createIndex(row, column, const_cast<Item *>(item->Child(row)));
 }
 
 QModelIndex TreeModel::parent(const QModelIndex & index) const
 {
-    const Item * item = get_item(index);
+    const Item * item = GetItem(index);
     if (item)
     {
-        const Item * parent = item->parent();
+        const Item * parent = item->Parent();
         if (parent)
         {
-            const Item * grand_parent = parent->parent();
+            const Item * grandParent = parent->Parent();
             int row = 0;
-            if (grand_parent)
+            if (grandParent)
             {
-                row = grand_parent->childRow(parent);
+                row = grandParent->ChildRow(parent);
             }
             return createIndex(row, 0, const_cast<Item *>(parent));
         }
@@ -89,12 +89,12 @@ QModelIndex TreeModel::parent(const QModelIndex & index) const
 
 int TreeModel::rowCount(const QModelIndex & parent) const
 {
-    const Item * item = get_item(parent);
+    const Item * item = GetItem(parent);
     if (!item)
     {
         item = &_root;
     }
-    return item->childrenCount();
+    return item->ChildrenCount();
 }
 
 int TreeModel::columnCount(const QModelIndex & parent) const
@@ -104,10 +104,10 @@ int TreeModel::columnCount(const QModelIndex & parent) const
 
 QVariant TreeModel::data(const QModelIndex & index, int role) const
 {
-    const Item * item = get_item(index);
+    const Item * item = GetItem(index);
     if (item)
     {
-        return item->data(role);
+        return item->Data(role);
     }
 
     //not found
@@ -125,10 +125,10 @@ QVariant TreeModel::headerData(int section, Qt::Orientation orientation, int rol
 
 bool TreeModel::setData(const QModelIndex & index, const QVariant & value, int role)
 {
-    Item * item = get_item(index);
+    Item * item = GetItem(index);
     if (item)
     {
-        item->setData(value, role);
+        item->SetData(value, role);
         emit dataChanged(index, index);
         return true;
     }
@@ -137,16 +137,16 @@ bool TreeModel::setData(const QModelIndex & index, const QVariant & value, int r
     return false;
 }
 
-bool TreeModel::insertRow(int row, const QModelIndex & parent)
+bool TreeModel::InsertRow(int row, const QModelIndex & parent)
 {
-    Item * item = get_item(parent);
+    Item * item = GetItem(parent);
     if (!item)
     {
         item = &_root;
     }
 
     beginInsertRows(parent, row, row);
-    bool rv = item->insertRow(row);
+    bool rv = item->InsertRow(row);
     endInsertRows();
 
     return rv;
@@ -165,11 +165,11 @@ Qt::ItemFlags TreeModel::flags(const QModelIndex & index) const
     return Qt::ItemIsEnabled|Qt::ItemIsSelectable;
 }
 
-void TreeModel::clear(void)
+void TreeModel::Clear(void)
 {
     //removeRows(0, rowCount());
     beginResetModel();
-    _root.clear();
+    _root.Clear();
     endResetModel();
 }
 
@@ -177,35 +177,35 @@ void TreeModel::clear(void)
  *     TreeModel::Item Members     *
  ***********************************/
 
-unsigned TreeModel::Item::next_id = 0;
+unsigned TreeModel::Item::nextId = 0;
 
-TreeModel::Item::Item() : _id(next_id++), _parent(NULL), _data(), _children()
+TreeModel::Item::Item() : _id(nextId++), _parent(NULL), _data(), _children()
 {
 }
 
-void TreeModel::Item::clear(void)
+void TreeModel::Item::Clear(void)
 {
     _children.clear();
     _data.clear();
 }
 
-bool TreeModel::Item::insertRow(int row)
+bool TreeModel::Item::InsertRow(int row)
 {
     if (row>=0 && row<=_children.size())
     {
         _children.insert(row, Item());
-        _children[row].setParent(this);
+        _children[row].SetParent(this);
         return true;
     }
     return false;
 }
 
-void TreeModel::Item::setData(const QVariant & value, int role)
+void TreeModel::Item::SetData(const QVariant & value, int role)
 {
     _data.insert(role, value);
 }
 
-QVariant TreeModel::Item::data(int role) const
+QVariant TreeModel::Item::Data(int role) const
 {
     QMap<int, QVariant>::const_iterator iter = _data.constFind(role);
     if (iter!=_data.constEnd())
@@ -215,12 +215,12 @@ QVariant TreeModel::Item::data(int role) const
     return QVariant();
 }
 
-int TreeModel::Item::childrenCount(void) const
+int TreeModel::Item::ChildrenCount(void) const
 {
     return _children.size();
 }
 
-TreeModel::Item * TreeModel::Item::child(int index)
+TreeModel::Item * TreeModel::Item::Child(int index)
 {
     if (index>=0 && index<_children.size())
     {
@@ -229,12 +229,12 @@ TreeModel::Item * TreeModel::Item::child(int index)
     return NULL;
 }
 
-const TreeModel::Item * TreeModel::Item::child(int index) const
+const TreeModel::Item * TreeModel::Item::Child(int index) const
 {
-    return const_cast<TreeModel::Item *>(this)->child(index);
+    return const_cast<TreeModel::Item *>(this)->Child(index);
 }
 
-int TreeModel::Item::childRow(const TreeModel::Item * child) const
+int TreeModel::Item::ChildRow(const TreeModel::Item * child) const
 {
     if (!child)
     {
@@ -243,7 +243,7 @@ int TreeModel::Item::childRow(const TreeModel::Item * child) const
     int index = 0;
     foreach(const TreeModel::Item & item, _children)
     {
-        if (item.id()==child->id())
+        if (item.Id()==child->Id())
         {
             return index;
         }

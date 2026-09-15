@@ -6,7 +6,7 @@ namespace smcp
 using namespace Spinnaker;
 using namespace Spinnaker::GenApi;
 
-bool CameraUtilities::getCameraInfo(const CameraPtr& cameraPtr, std::string& modelName, std::string& serialNumber)
+bool CameraUtilities::GetCameraInfo(const CameraPtr& cameraPtr, std::string& modelName, std::string& serialNumber)
 {
 	// Check camera.
 	if (cameraPtr == nullptr) return false;
@@ -24,7 +24,7 @@ bool CameraUtilities::getCameraInfo(const CameraPtr& cameraPtr, std::string& mod
 	return false;
 }
 
-void CameraUtilities::disableCameraAutoSettings(const Spinnaker::CameraPtr& cameraPtr)
+void CameraUtilities::DisableCameraAutoSettings(const Spinnaker::CameraPtr& cameraPtr)
 {
 	if (IsAvailable(cameraPtr->BlackLevelAuto) && IsWritable(cameraPtr->BlackLevelAuto))
 	{
@@ -54,7 +54,7 @@ void CameraUtilities::disableCameraAutoSettings(const Spinnaker::CameraPtr& came
 	}
 }
 
-void CameraUtilities::restoreCameraAutoSettings(const Spinnaker::CameraPtr& cameraPtr)
+void CameraUtilities::RestoreCameraAutoSettings(const Spinnaker::CameraPtr& cameraPtr)
 {
 	if (IsAvailable(cameraPtr->BlackLevelAuto) && IsWritable(cameraPtr->BlackLevelAuto))
 	{
@@ -84,7 +84,7 @@ void CameraUtilities::restoreCameraAutoSettings(const Spinnaker::CameraPtr& came
 	}
 }
 
-CameraSettings CameraUtilities::getCameraSettings(const CameraPtr& cameraPtr)
+CameraSettings CameraUtilities::GetCameraSettings(const CameraPtr& cameraPtr)
 {
 	CameraSettings settings;
 	if (!cameraPtr) return settings;
