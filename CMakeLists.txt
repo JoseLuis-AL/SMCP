@@ -86,31 +86,16 @@ set(SMCP_SOURCES_V1
     src/CalibrationData.hpp
     src/CalibrationDialog.cpp
     src/CalibrationDialog.hpp
-    src/CaptureDialog.cpp
-    src/CaptureDialog.hpp
-    src/Config.h
-    src/GLWidget.cpp
-    src/GLWidget.hpp
     src/ImageLabel.cpp
     src/ImageLabel.hpp
-    src/ImageUtil.cpp
-    src/ImageUtil.hpp
     src/MainWindow.cpp
     src/MainWindow.hpp
     src/ProcessingDialog.cpp
     src/ProcessingDialog.hpp
     src/ProjectorWidget.cpp
     src/ProjectorWidget.hpp
-    src/SpinnakerCameraConfig.h
-    src/SpinnakerCaptureWorker.cpp
-    src/SpinnakerCaptureWorker.h
     src/TreeModel.cpp
     src/TreeModel.hpp
-    src/VideoInput.cpp
-    src/VideoInput.hpp
-    src/cognex_util.hpp
-    src/im_util.cpp
-    src/im_util.hpp
     src/io_util.cpp
     src/io_util.hpp
     src/scan3d.cpp
@@ -134,9 +119,6 @@ set(SMCP_SOURCES_V2
     src_v2/Literals.h
     src_v2/PixmapQWidget.cpp
     src_v2/PixmapQWidget.h
-    src_v2/PointcloudPreviewQDialog.cpp
-    src_v2/PointcloudPreviewQDialog.h
-    src_v2/PointcloudPreviewQDialog.ui
     src_v2/PointcloudWidget.cpp
     src_v2/PointcloudWidget.h
     src_v2/Settings.h
@@ -147,7 +129,6 @@ set(SMCP_SOURCES_V2
 set(SMCP_FORMS
     forms/AboutDialog.ui
     forms/CalibrationDialog.ui
-    forms/CaptureDialog.ui
     forms/MainWindow.ui
     forms/ProcessingDialog.ui
 )
@@ -210,8 +191,6 @@ target_link_libraries(SMCP PRIVATE
     opencv_flann
     OpenGL::GL
     $<$<BOOL:${SMCP_WITH_SPINNAKER}>:Spinnaker::Spinnaker>
-    # DirectShow / VfW (VideoInput.cpp)
-    Strmiids Vfw32 Ole32 OleAut32
 )
 
 # ---------------------------------------------------------------------------

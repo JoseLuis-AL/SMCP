@@ -13,7 +13,6 @@
 
 #include "Application.hpp"
 #include "CameraUtilities.h"
-#include "im_util.hpp"
 #include "Literals.h"
 #include "Settings.h"
 

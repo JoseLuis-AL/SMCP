@@ -9,10 +9,10 @@
 
 // Qt
 #include <QDialog>
+#include <QThread>
 
 // Camera & Projector handler
 #include "CameraWorker.h"
-#include "SpinnakerCaptureWorker.h"
 #include "ProjectorWidget.hpp"
 
 namespace SMCP

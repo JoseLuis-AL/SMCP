@@ -50,7 +50,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "io_util.hpp"
 
 #include "AboutDialog.hpp"
-#include "CaptureDialog.hpp"
 #include "CalibrationDialog.hpp"
 #include "CaptureQDialog.h"
 #include "IOExport.h"

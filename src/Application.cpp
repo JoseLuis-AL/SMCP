@@ -43,8 +43,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "structured_light.hpp"
 
-#include "cognex_util.hpp"
-
 Application::Application(int& argc, char** argv) :
 	QApplication(argc, argv),
 #ifdef _MSC_VER
@@ -422,7 +420,6 @@ bool Application::extract_chessboard_corners(void)
 		}
 
 		//this will be filled by the detected corners
-		bool cognex_chessboard = false;
 		std::vector<cv::Point2f>& cam_corners = corners_camera[i];
 		std::vector<cv::Point3f>& world_corners = corners_world[i];
 		if (cv::findChessboardCorners(small_img, corner_count, cam_corners,
@@ -433,35 +430,15 @@ bool Application::extract_chessboard_corners(void)
 
 			get_chessboard_world_coords(world_corners, corner_count, corner_size);
 		}
-#ifdef USE_COGNEX
-		else
-		{
-			//try cognex cal
-			if (cognex::extract_corners(gray_image, cam_corners, world_corners))
-			{   //cognex cal plate not found
-				processing_message(QString(" * %1: Cognex chessboard found").arg(set_name));
-				cognex_chessboard = true;
-			}
-			else
-			{   //cognex cal plate not found
-				all_found = false;
-				processing_message(QString(" * %1: chessboard not found!").arg(set_name));
-				std::cout << " - chessboard not found!" << std::endl;
-			}
-		}
-#endif //USE_COGNEX
 
-		if (!cognex_chessboard)
+		for (std::vector<cv::Point2f>::iterator iter = cam_corners.begin(); iter != cam_corners.end(); iter++)
 		{
-			for (std::vector<cv::Point2f>::iterator iter = cam_corners.begin(); iter != cam_corners.end(); iter++)
-			{
-				*iter = image_scale * (*iter);
-			}
-			if (cam_corners.size())
-			{
-				cv::cornerSubPix(gray_image, cam_corners, cv::Size(11, 11), cv::Size(-1, -1),
-					cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
-			}
+			*iter = image_scale * (*iter);
+		}
+		if (cam_corners.size())
+		{
+			cv::cornerSubPix(gray_image, cam_corners, cv::Size(11, 11), cv::Size(-1, -1),
+				cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
 		}
 
 		processing_set_progress_value(i + 1);
