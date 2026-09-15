@@ -13,5 +13,6 @@
     <file alias="icon-3d.svg">icons/icon-3d.svg</file>
     <file alias="icon-projector.svg">icons/icon-projector.svg</file>
     <file alias="david.png">icons/david.png</file>
+    <file>theme/smcp.qss</file>
   </qresource>
 </RCC>

@@ -14,6 +14,21 @@
    <string>About Camera-Projector Calibration</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
+   <property name="spacing">
+    <number>6</number>
+   </property>
+   <property name="leftMargin">
+    <number>9</number>
+   </property>
+   <property name="topMargin">
+    <number>9</number>
+   </property>
+   <property name="rightMargin">
+    <number>9</number>
+   </property>
+   <property name="bottomMargin">
+    <number>9</number>
+   </property>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_2">
      <item>
@@ -39,11 +54,6 @@
       <layout class="QVBoxLayout" name="verticalLayout">
        <item>
         <widget class="QLabel" name="title_label">
-         <property name="font">
-          <font>
-           <pointsize>16</pointsize>
-          </font>
-         </property>
          <property name="text">
           <string>3D Scanning Software</string>
          </property>
@@ -54,11 +64,6 @@
        </item>
        <item>
         <widget class="QLabel" name="course_label">
-         <property name="font">
-          <font>
-           <pointsize>11</pointsize>
-          </font>
-         </property>
          <property name="text">
           <string>Simple, Accurate, and Robust Projector-Camera Calibration</string>
          </property>
@@ -69,11 +74,6 @@
        </item>
        <item>
         <widget class="QLabel" name="label_author">
-         <property name="font">
-          <font>
-           <pointsize>10</pointsize>
-          </font>
-         </property>
          <property name="text">
           <string>Daniel Moreno and Gabriel Taubin</string>
          </property>
@@ -94,11 +94,6 @@
       </property>
       <item row="2" column="0">
        <widget class="QLabel" name="qt_version_title_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>Qt Version:</string>
         </property>
@@ -106,11 +101,6 @@
       </item>
       <item row="2" column="1">
        <widget class="QLabel" name="qt_version_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>qt ver</string>
         </property>
@@ -118,11 +108,6 @@
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="opencv_title_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>OpenCV Version:</string>
         </property>
@@ -130,11 +115,6 @@
       </item>
       <item row="3" column="1">
        <widget class="QLabel" name="opencv_version_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>opencv ver</string>
         </property>
@@ -142,11 +122,6 @@
       </item>
       <item row="4" column="0">
        <widget class="QLabel" name="built_date_title_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>Built on:</string>
         </property>
@@ -154,11 +129,6 @@
       </item>
       <item row="4" column="1">
        <widget class="QLabel" name="built_date_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>build date time</string>
         </property>
@@ -166,11 +136,6 @@
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="url_title_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
          <string>URL:</string>
         </property>
@@ -178,13 +143,8 @@
       </item>
       <item row="1" column="1">
        <widget class="QLabel" name="url_label">
-        <property name="font">
-         <font>
-          <pointsize>10</pointsize>
-         </font>
-        </property>
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;http://mesh.brown.edu/scanning/&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;http://mesh.brown.edu/scanning/&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a href=&quot;http://mesh.brown.edu/scanning/&quot;&gt;http://mesh.brown.edu/scanning/&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="textFormat">
          <enum>Qt::RichText</enum>
@@ -214,11 +174,6 @@
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
       <widget class="QLabel" name="author_label">
-       <property name="font">
-        <font>
-         <pointsize>10</pointsize>
-        </font>
-       </property>
        <property name="text">
         <string>(c) 2012-2015 Daniel Moreno and Gabriel Taubin</string>
        </property>

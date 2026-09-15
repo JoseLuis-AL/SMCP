@@ -28,9 +28,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "app/Application.h"
 
 #include <QDir>
+#include <QFile>
+#include <QFont>
 #include <QProgressDialog>
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QStyleFactory>
 
 #include <cmath>
 #include <iostream>
@@ -63,7 +66,8 @@ Application::Application(int& argc, char** argv) :
 	min_max_list(),
 	projector_view_list(),
 	pointcloud(),
-	mainWin((QWidget*)(load_config(), NULL)),
+	// load_config() y apply_theme() deben ejecutarse antes de construir la ventana principal.
+	mainWin((QWidget*)(load_config(), apply_theme(), NULL)),
 	processingDialog(&mainWin, Qt::Window | Qt::CustomizeWindowHint | Qt::WindowTitleHint)
 {
 	connect(this, SIGNAL(aboutToQuit()), this, SLOT(deinit()));
@@ -107,6 +111,25 @@ void Application::clear(void)
 	min_max_list.clear();
 	projector_view_list.clear();
 	pointcloud.clear();
+}
+
+// Unico punto donde se define el aspecto de la aplicacion: estilo Fusion, fuente
+// base y la hoja resources/theme/smcp.qss (ver docs/STYLE.md). Los .ui no llevan
+// propiedades styleSheet ni font.
+void Application::apply_theme(void)
+{
+	setStyle(QStyleFactory::create("Fusion"));
+	setFont(QFont("Segoe UI", 9));
+
+	QFile qss(":/theme/smcp.qss");
+	if (qss.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		setStyleSheet(QString::fromUtf8(qss.readAll()));
+	}
+	else
+	{
+		std::cerr << "[theme] no se pudo cargar :/theme/smcp.qss" << std::endl;
+	}
 }
 
 void Application::load_config(void)

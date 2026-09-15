@@ -97,6 +97,7 @@ public:
 	bool load_dump(const char* filename, int type, cv::Mat2f& pattern_image, cv::Mat2b& min_max_image, cv::Mat3b& color_image) const;
 
 	void load_config(void);
+	void apply_theme(void);
 
 	//Detection/Decoding/Calibration processing
 	inline void processing_set_current_message(const QString& text) const { processingDialog.set_current_message(text); processEvents(); }

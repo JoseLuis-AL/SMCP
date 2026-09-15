@@ -1,0 +1,133 @@
+/* =============================================================================
+   SMCP - tema visual unico
+   Se carga una sola vez en smcp::Application::apply_theme() sobre el estilo
+   "Fusion". Ningun .ui ni ningun widget define styleSheet ni font propios;
+   la fuente de aplicacion (Segoe UI 9pt) se fija con QApplication::setFont.
+
+   TOKENS (referencia; QSS no admite variables, los valores se repiten tal cual)
+   ----------------------------------------------------------------------------
+   Colores
+     base         #f0f0f0                 fondo de ventanas, dialogos y grupos
+     surface      #ffffff                 fondo de vistas, listas y campos
+     border       #d1d1d1                 borde y separador de grupos
+     border-soft  #dcdcdc                 borde de vistas, campos y progreso
+     hover        rgba(199, 199, 199, 0.4) fondo al pasar el raton (botones de vista)
+     active       #c7c7c7                 pulsado / seleccionado (botones de vista)
+     accent       #3e8948                 acento: barra de progreso y cruz de
+                                          alineacion del proyector (ProjectorWidget)
+   Tipografia
+     familia      Segoe UI                (Application.cpp, QApplication::setFont)
+     base         9pt                     controles, etiquetas, menus
+     grupo        10pt bold               titulos de QGroupBox
+     dialogo      10pt                    etiquetas del dialogo "Acerca de"
+     subtitulo    11pt                    AboutDialog#course_label
+     titulo       16pt                    AboutDialog#title_label
+   Geometria
+     radio        4px                     grupos, vistas, campos, botones de vista
+     titulo grupo padding 0 10px, margin-top 5px; el grupo reserva margin-top 20px
+   Espaciado (definido en los .ui, no aqui)
+     dialogo      margen 9px, spacing 6px (layout raiz de cada QDialog)
+     grupo        margen 6px, spacing 6px (layouts internos)
+   ============================================================================= */
+
+/* --- Superficies base ------------------------------------------------------ */
+QMainWindow,
+QDialog,
+QGroupBox {
+    background-color: #f0f0f0;
+}
+
+/* --- Grupos ---------------------------------------------------------------- */
+QGroupBox {
+    border: 0px solid #d1d1d1;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top center;
+    font-size: 10pt;
+    font-weight: bold;
+    padding: 0 10px;
+    margin-top: 5px;
+}
+
+/* Grupos de parametros del panel derecho (MainWindow): separador superior. */
+QGroupBox#checkerboard_group,
+QGroupBox#robust_decode_group,
+QGroupBox#calibration_group,
+QGroupBox#reconstruction_group {
+    border-top: 1px solid #d1d1d1;
+}
+
+/* Grupos de proyector y camara (CaptureDialog): borde completo. */
+QGroupBox#projector_group,
+QGroupBox#camera_group {
+    border: 1px solid #d1d1d1;
+}
+
+/* --- Vistas y campos ------------------------------------------------------- */
+QTreeView,
+QListView,
+QTableView,
+QTextEdit,
+QPlainTextEdit {
+    background: #ffffff;
+    border: 1px solid #dcdcdc;
+    border-radius: 4px;
+}
+
+QTreeView#image_tree {
+    padding-top: 5px;
+}
+
+QTreeView::corner,
+QTableView::corner {
+    border: 1px solid #dcdcdc;
+    border-radius: 4px;
+}
+
+/* --- Selector de vista (MainWindow): botones planos con estado ------------- */
+/* Solo los QToolButton del grupo "Current View"; los botones de acciones
+   conservan el aspecto normal de Fusion. */
+QGroupBox#current_image_group QToolButton {
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+}
+
+QGroupBox#current_image_group QToolButton:hover {
+    background: rgba(199, 199, 199, 0.4);
+}
+
+QGroupBox#current_image_group QToolButton:checked,
+QGroupBox#current_image_group QToolButton:pressed {
+    background: #c7c7c7;
+}
+
+/* --- Progreso -------------------------------------------------------------- */
+QProgressBar {
+    background: #ffffff;
+    border: 1px solid #dcdcdc;
+    border-radius: 4px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #3e8948;
+    border-radius: 3px;
+}
+
+/* --- Dialogo "Acerca de" --------------------------------------------------- */
+QDialog#AboutDialog QLabel {
+    font-size: 10pt;
+}
+
+QDialog#AboutDialog QLabel#course_label {
+    font-size: 11pt;
+}
+
+QDialog#AboutDialog QLabel#title_label {
+    font-size: 16pt;
+}
