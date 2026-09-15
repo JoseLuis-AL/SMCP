@@ -164,5 +164,11 @@ Abre un *Developer PowerShell for VS 2026* o usa `scripts\build.ps1`, que import
 Compila al menos una vez el preset `ninja-debug`; `compile_commands.json` se genera y se
 completa con las rutas del toolset en ese build.
 
+**clangd se reinicia al pasar el ratón por un `++` de un iterador**
+Es un fallo conocido de clangd (22.x y 23.x) en modo clang‑cl con los iteradores de
+`std::vector<cv::Point2f>` de `scan3d.cpp` y `Application.cpp` (`clangd --check` lo
+reproduce). Zed relanza el servidor solo; el diagnóstico y el autocompletado del resto del
+archivo no se ven afectados.
+
 **Visual Studio compila con la configuración equivocada**
 Comprueba el desplegable de configuraciones; cada preset tiene su propio `build/<preset>`.
