@@ -49,7 +49,7 @@ if(DEFINED Qt5_DIR AND NOT EXISTS "${Qt5_DIR}/Qt5Config.cmake"
         AND EXISTS "${Qt5_DIR}/lib/cmake/Qt5/Qt5Config.cmake")
     set(Qt5_DIR "${Qt5_DIR}/lib/cmake/Qt5" CACHE PATH "Directorio lib/cmake/Qt5 del kit de Qt" FORCE)
 endif()
-find_package(Qt5 5.14 REQUIRED COMPONENTS Core Gui Widgets OpenGL)
+find_package(Qt5 5.14 REQUIRED COMPONENTS Core Gui Widgets OpenGL Concurrent)
 get_target_property(_qmake_location Qt5::qmake IMPORTED_LOCATION)
 get_filename_component(SMCP_QT_BIN_DIR "${_qmake_location}" DIRECTORY)
 message(STATUS "Qt ${Qt5_VERSION}: ${SMCP_QT_BIN_DIR}")
@@ -97,6 +97,11 @@ set(SMCP_SOURCES_UI
     src/ui/ImageLabel.h
     src/ui/PixmapWidget.cpp
     src/ui/PixmapWidget.h
+    src/ui/PointcloudEditorDialog.cpp
+    src/ui/PointcloudEditorDialog.h
+    src/ui/PointcloudEditorDialog.ui
+    src/ui/PointcloudPreviewWidget.cpp
+    src/ui/PointcloudPreviewWidget.h
     src/ui/PointcloudWidget.cpp
     src/ui/PointcloudWidget.h
     src/ui/ProcessingDialog.cpp
@@ -120,6 +125,8 @@ set(SMCP_SOURCES_CORE
     src/core/CalibrationData.h
     src/core/io_util.cpp
     src/core/io_util.h
+    src/core/pointcloud_ops.cpp
+    src/core/pointcloud_ops.h
     src/core/scan3d.cpp
     src/core/scan3d.h
     src/core/structured_light.cpp
@@ -190,6 +197,9 @@ target_compile_definitions(SMCP PRIVATE
     _ENABLE_EXTENDED_ALIGNED_STORAGE
     UNICODE
     _UNICODE
+    # opencv2/flann (2.4) usa std::random_shuffle, retirado en C++17; la STL de MSVC lo
+    # conserva si se activa esta macro.
+    _HAS_AUTO_PTR_ETC=1
     $<$<BOOL:${SMCP_WITH_SPINNAKER}>:USE_SPINNAKER>
 )
 
@@ -205,6 +215,7 @@ target_link_libraries(SMCP PRIVATE
     Qt5::Gui
     Qt5::Widgets
     Qt5::OpenGL
+    Qt5::Concurrent
     opencv_core
     opencv_imgproc
     opencv_highgui

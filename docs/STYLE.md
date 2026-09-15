@@ -54,8 +54,13 @@ Las reglas van de lo general a lo particular:
 4. **Selector de vista**: los `QToolButton` dentro de `#current_image_group` son planos y
    muestran estado `checked`. Está acotado al grupo para que los botones de acciones
    (`Capture`, `Decode`, …), que también son `QToolButton`, conserven el aspecto normal.
-5. **Progreso**: `QProgressBar` y su `::chunk` con el acento.
-6. **Diálogo "Acerca de"**: tamaños de fuente de sus etiquetas.
+5. **Editor de nubes de puntos** (`QDialog#PointcloudEditorDialog`): barra de comandos con
+   `QToolButton` planos (texto junto al icono, `padding: 6px`) y la lista superpuesta del
+   visor 3D (`#pointcloud_overlay_list`, `#pointcloud_overlay_label`,
+   `#pointcloud_overlay_delete`), que es la única superficie oscura del tema
+   (`rgba(20,20,20,180)` sobre el fondo negro del visor) porque flota sobre la nube.
+6. **Progreso**: `QProgressBar` y su `::chunk` con el acento.
+7. **Diálogo "Acerca de"**: tamaños de fuente de sus etiquetas.
 
 Regla general: **selecciona por tipo de widget**; usa `objectName` solo cuando un widget
 concreto debe diferir del resto (como los casos anteriores).

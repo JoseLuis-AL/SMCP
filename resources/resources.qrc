@@ -13,6 +13,12 @@
     <file alias="icon-3d.svg">icons/icon-3d.svg</file>
     <file alias="icon-projector.svg">icons/icon-projector.svg</file>
     <file alias="david.png">icons/david.png</file>
+    <file alias="icon-refresh.svg">icons/icon-refresh.svg</file>
+    <file alias="icon-outliers.svg">icons/icon-outliers.svg</file>
+    <file alias="icon-plane.svg">icons/icon-plane.svg</file>
+    <file alias="icon-sphere.svg">icons/icon-sphere.svg</file>
+    <file alias="icon-save.svg">icons/icon-save.svg</file>
+    <file alias="icon-close.svg">icons/icon-close.svg</file>
     <file>theme/smcp.qss</file>
   </qresource>
 </RCC>

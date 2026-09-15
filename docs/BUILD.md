@@ -8,7 +8,7 @@ build (CMake + presets); no existen archivos `.pro`, `.vcxproj` ni `.sln` versio
 | Componente | Versión | Dónde obtenerlo | Notas |
 |---|---|---|---|
 | Visual Studio 2026 Community | 18.x, toolset v145 | visualstudio.microsoft.com | Carga de trabajo **Desarrollo de escritorio con C++** con los componentes *Herramientas de CMake de C++ para Windows* (incluye CMake ≥ 3.28 y Ninja) y *Windows 11 SDK*. |
-| Qt | 5.14.2, kit **msvc2017_64** | Qt Online Installer (archivo → 5.14.2) | Módulos Core, Gui, Widgets, OpenGL. El kit msvc2017_64 es ABI‑compatible con los toolsets v141…v145. |
+| Qt | 5.14.2, kit **msvc2017_64** | Qt Online Installer (archivo → 5.14.2) | Módulos Core, Gui, Widgets, OpenGL, Concurrent. El kit msvc2017_64 es ABI‑compatible con los toolsets v141…v145. |
 | OpenCV | 2.4.13 (paquete Windows) | github.com/opencv/opencv/releases (opencv-2.4.13.6-vc14.exe) | Se usa el binario `build/x64/vc14`. |
 | Spinnaker SDK | 3.x / 4.x (Teledyne FLIR) | flir.com/products/spinnaker-sdk | Opcional. Sin él, `SMCP_WITH_SPINNAKER=OFF`. |
 

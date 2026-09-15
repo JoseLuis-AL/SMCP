@@ -11,6 +11,8 @@ Projector‑Camera Calibration* (Daniel Moreno y Gabriel Taubin, 3DimPVT 2012,
 - Captura desde cámaras FLIR/Teledyne mediante el SDK Spinnaker.
 - Triangulación a nubes de puntos orientadas con color y exportación a PLY/XYZ.
 - Visor 3D integrado (OpenGL) de la nube reconstruida.
+- Editor de nubes de puntos (`.xyz`): eliminación de outliers, ajuste RANSAC de planos y
+  esferas, comparación con la nube original y guardado, sin dependencias externas (solo OpenCV).
 
 ## Requisitos
 
@@ -18,7 +20,7 @@ Projector‑Camera Calibration* (Daniel Moreno y Gabriel Taubin, 3DimPVT 2012,
 |---|---|---|
 | Windows | 10 / 11 x64 | |
 | Visual Studio | 2026 (18.x, toolset v145) | Carga de trabajo *Desarrollo de escritorio con C++* con CMake ≥ 3.28 y Ninja. |
-| Qt | 5.14.2, kit `msvc2017_64` | Módulos `Core`, `Gui`, `Widgets`, `OpenGL`. |
+| Qt | 5.14.2, kit `msvc2017_64` | Módulos `Core`, `Gui`, `Widgets`, `OpenGL`, `Concurrent`. |
 | OpenCV | 2.4.13 (paquete Windows, `build/x64/vc14`) | Módulos `core`, `imgproc`, `highgui`, `calib3d`, `features2d`, `flann`. |
 | Spinnaker SDK | 3.x / 4.x (`lib64/vs2017` o `lib64/vs2015`) | Opcional: `-DSMCP_WITH_SPINNAKER=OFF` compila sin cámara (el botón *Capture* lo indica). |
 
@@ -57,7 +59,7 @@ cmake/                         FindSpinnaker.cmake, PatchCompileCommands.cmake
 scripts/                       bootstrap.ps1 (detecta dependencias), build.ps1
 src/app                        main.cpp, Application, MainWindow (+ MainWindow.ui)
 src/ui                         Diálogos y widgets Qt (los .ui viven junto a su clase)
-src/core                       CalibrationData, structured_light, scan3d, io_util
+src/core                       CalibrationData, structured_light, scan3d, io_util, pointcloud_ops
 src/camera                     CameraWorker, CameraUtilities, CameraSettings (Spinnaker)
 src/export                     IOExport (PLY / XYZ)
 src/common                     Settings.h, Literals.h, cvMatConvert
@@ -86,7 +88,9 @@ un ejemplo del archivo de calibración que produce la aplicación.
 2. Captura varios juegos de patrones con el tablero de ajedrez en distintas posiciones
    (*Capture*).
 3. Decodifica (*Decode*), extrae esquinas (*Extract Corners*) y calibra (*Calibrate*).
-4. Reconstruye (*Reconstruct*), revisa la nube en *3D View* y expórtala (*Point Cloud*).
+4. Reconstruye (*Reconstruct*): la nube se guarda en XYZ o PLY y se muestra en *3D View*.
+5. Abre el editor (*Point Cloud*) para limpiar outliers, ajustar planos o esferas y guardar
+   el resultado.
 
 ## Licencia
 

@@ -1,6 +1,7 @@
 #include "export/IOExport.h"
 
 #include <fstream>
+#include <sstream>
 #include <vector>
 #include <iostream>
 #include <iomanip>
@@ -262,5 +263,57 @@ bool IOExport::write_xyz(const std::string& filename, const scan3d::Pointcloud& 
 	out.close();
 	std::cerr << "[write_xyz] Saved " << indices.size() << " points (" << filename << ")\n";
 	return true;
+}
+
+/* Colored clouds (editor) ================================================================= */
+
+bool IOExport::read_xyz(const std::string& filename, pointcloud::ColorCloud& cloud)
+{
+	std::ifstream in(filename);
+	if (!in.is_open())
+	{
+		return false;
+	}
+
+	cloud.clear();
+	std::string line;
+	while (std::getline(in, line))
+	{
+		std::istringstream fields(line);
+		pointcloud::ColorPoint pt;
+		if (!(fields >> pt.x >> pt.y >> pt.z))
+		{
+			continue;  // linea vacia o con menos de tres campos
+		}
+		float r = 0.0f, g = 0.0f, b = 0.0f;
+		if (fields >> r >> g >> b)
+		{
+			pt.r = static_cast<std::uint8_t>(r);
+			pt.g = static_cast<std::uint8_t>(g);
+			pt.b = static_cast<std::uint8_t>(b);
+		}
+		cloud.push_back(pt);
+	}
+	return true;
+}
+
+bool IOExport::write_xyz(const std::string& filename, const pointcloud::ColorCloud& cloud)
+{
+	if (cloud.empty())
+	{
+		return false;
+	}
+	std::ofstream out(filename);
+	if (!out.is_open())
+	{
+		return false;
+	}
+	out << std::fixed << std::setprecision(6);
+	for (const auto& pt : cloud)
+	{
+		out << pt.x << ' ' << pt.y << ' ' << pt.z << ' '
+			<< static_cast<int>(pt.r) << ' ' << static_cast<int>(pt.g) << ' ' << static_cast<int>(pt.b) << '\n';
+	}
+	return out.good();
 }
 } // namespace smcp

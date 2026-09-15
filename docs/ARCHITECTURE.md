@@ -98,6 +98,24 @@ anidados (`smcp::sl`, `smcp::scan3d`, `smcp::io_util`, `smcp::IOExport`).
 - `reconstruct_dump_action` permite reconstruir y exportar a partir de un volcado de patrón
   previamente guardado (`Application::dump_decoded` / `load_dump`).
 
+### 7. Edición de nubes — `src/ui/PointcloudEditorDialog` → `src/core/pointcloud_ops`
+
+- El botón *Point Cloud* abre `PointcloudEditorDialog` (modal, maximizado) sobre el
+  directorio de trabajo: el desplegable lista los `.xyz` y `IOExport::read_xyz` carga el
+  elegido como `pointcloud::ColorCloud` (x, y, z, r, g, b; gris neutro si no hay color).
+- Comandos de la barra: **Remove Outliers** (`remove_statistical_outliers`, k = 50,
+  1 desviación), **Fit** con el modelo del desplegable `fit_model_combo` (`fit_planes` o
+  `fit_spheres`, RANSAC con reajuste por mínimos cuadrados; las esferas se buscan tras
+  quitar los planos dominantes para elevar la fracción de inliers), **Save** (`write_xyz`;
+  tras un ajuste de planos escribe un archivo por plano) y **Close**. Para añadir un modelo
+  nuevo basta con ampliar el enum `FitModel`, `add_fit_models()` y `on_fit_button_clicked()`.
+- Cada comando corre en un hilo de trabajo (`QtConcurrent::run` + `QFutureWatcher`) con la
+  barra deshabilitada; el resultado se muestra en `PointcloudPreviewWidget`, un visor
+  OpenGL multi‑nube con cámara orbital y una lista superpuesta para reordenar o quitar
+  nubes (la original se dibuja en rojo para comparar tras filtrar).
+- `pointcloud_ops` no depende de Qt ni de PCL: solo de OpenCV (`flann` para los vecinos
+  del filtro de outliers, `PCA`/`solve` para los reajustes).
+
 ## Estado y configuración
 
 - `Application::config` (`QSettings`, ámbito de usuario, formato nativo) es la única

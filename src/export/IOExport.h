@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include "core/pointcloud_ops.h"
 #include "core/scan3d.h"
 
 namespace smcp::IOExport
@@ -38,4 +39,17 @@ bool write_ply(const std::string& filename, const scan3d::Pointcloud& pointcloud
 /// <param name="format">Column format (Xyz or XyzRgb).</param>
 /// <returns>True if the file was written successfully.</returns>
 bool write_xyz(const std::string& filename, const scan3d::Pointcloud& pointcloud, XyzFormat format = XyzFormat::Xyz);
+
+/// <summary>
+/// Reads an ASCII point cloud (X Y Z [R G B] per line) into a colored cloud. Lines with fewer than three
+/// fields are skipped; points without color get a neutral gray (200, 200, 200).
+/// </summary>
+/// <returns>True if the file could be opened.</returns>
+bool read_xyz(const std::string& filename, pointcloud::ColorCloud& cloud);
+
+/// <summary>
+/// Writes a colored cloud as ASCII "X Y Z R G B" lines (six decimals for coordinates).
+/// </summary>
+/// <returns>True if the file was written successfully.</returns>
+bool write_xyz(const std::string& filename, const pointcloud::ColorCloud& cloud);
 }

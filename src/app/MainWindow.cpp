@@ -54,6 +54,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 #include "export/IOExport.h"
 #include "ui/BusyCursorGuard.h"
+#include "ui/PointcloudEditorDialog.h"
 
 namespace smcp
 {
@@ -811,8 +812,17 @@ void MainWindow::on_reconstruction_action_button_clicked(bool checked)
 	reset_view();
 }
 
+/// <summary>
+/// Opens the point cloud editor (modal) over the .xyz files of the working directory:
+/// outlier removal, RANSAC plane/sphere fitting, 3D comparison and export.
+/// </summary>
+/// <param name="checked">Indicates whether the button is in a checked state (not used).</param>
 void MainWindow::on_pointcloud_action_button_clicked(bool checked)
-{}
+{
+	PointcloudEditorDialog dialog(APP->get_root_dir(), this);
+	dialog.setModal(true);
+	dialog.exec();
+}
 
 /* PREVIEW BUTTONS ========================================================================= */
 
