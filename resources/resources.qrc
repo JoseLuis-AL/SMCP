@@ -1,0 +1,17 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="icon-object.svg">icons/icon-object.svg</file>
+    <file alias="icon-decode.svg">icons/icon-decode.svg</file>
+    <file alias="icon-decode-projector.svg">icons/icon-decode-projector.svg</file>
+    <file alias="icon-extract-corners.svg">icons/icon-extract-corners.svg</file>
+    <file alias="icon-camera.svg">icons/icon-camera.svg</file>
+    <file alias="icon-check-all.svg">icons/icon-check-all.svg</file>
+    <file alias="icon-uncheck-all.svg">icons/icon-uncheck-all.svg</file>
+    <file alias="icon-folder.svg">icons/icon-folder.svg</file>
+    <file alias="icon-image.svg">icons/icon-image.svg</file>
+    <file alias="icon-calibration.svg">icons/icon-calibration.svg</file>
+    <file alias="icon-3d.svg">icons/icon-3d.svg</file>
+    <file alias="icon-projector.svg">icons/icon-projector.svg</file>
+    <file alias="david.png">icons/david.png</file>
+  </qresource>
+</RCC>

@@ -74,91 +74,113 @@ endif()
 find_package(OpenGL REQUIRED)
 
 # ---------------------------------------------------------------------------
-# Fuentes (listas explicitas, sin GLOB)
+# Fuentes (listas explicitas por subdirectorio, sin GLOB)
 # ---------------------------------------------------------------------------
-set(SMCP_SOURCES_V1
-    src/main.cpp
-    src/AboutDialog.cpp
-    src/AboutDialog.hpp
-    src/Application.cpp
-    src/Application.hpp
-    src/CalibrationData.cpp
-    src/CalibrationData.hpp
-    src/CalibrationDialog.cpp
-    src/CalibrationDialog.hpp
-    src/ImageLabel.cpp
-    src/ImageLabel.hpp
-    src/MainWindow.cpp
-    src/MainWindow.hpp
-    src/ProcessingDialog.cpp
-    src/ProcessingDialog.hpp
-    src/ProjectorWidget.cpp
-    src/ProjectorWidget.hpp
-    src/TreeModel.cpp
-    src/TreeModel.hpp
-    src/io_util.cpp
-    src/io_util.hpp
-    src/scan3d.cpp
-    src/scan3d.hpp
-    src/structured_light.cpp
-    src/structured_light.hpp
+set(SMCP_SOURCES_APP
+    src/app/main.cpp
+    src/app/Application.cpp
+    src/app/Application.h
+    src/app/MainWindow.cpp
+    src/app/MainWindow.h
+    src/app/MainWindow.ui
 )
 
-set(SMCP_SOURCES_V2
-    src_v2/BusyCursorGuard.h
-    src_v2/CameraSettings.h
-    src_v2/CameraUtilities.cpp
-    src_v2/CameraUtilities.h
-    src_v2/CameraWorker.cpp
-    src_v2/CameraWorker.h
-    src_v2/CaptureQDialog.cpp
-    src_v2/CaptureQDialog.h
-    src_v2/CaptureQDialog.ui
-    src_v2/IOExport.cpp
-    src_v2/IOExport.h
-    src_v2/Literals.h
-    src_v2/PixmapQWidget.cpp
-    src_v2/PixmapQWidget.h
-    src_v2/PointcloudWidget.cpp
-    src_v2/PointcloudWidget.h
-    src_v2/Settings.h
-    src_v2/cvMatConvert.cpp
-    src_v2/cvMatConvert.h
+set(SMCP_SOURCES_UI
+    src/ui/AboutDialog.cpp
+    src/ui/AboutDialog.h
+    src/ui/AboutDialog.ui
+    src/ui/BusyCursorGuard.h
+    src/ui/CalibrationDialog.cpp
+    src/ui/CalibrationDialog.h
+    src/ui/CalibrationDialog.ui
+    src/ui/ImageLabel.cpp
+    src/ui/ImageLabel.h
+    src/ui/PixmapWidget.cpp
+    src/ui/PixmapWidget.h
+    src/ui/PointcloudWidget.cpp
+    src/ui/PointcloudWidget.h
+    src/ui/ProcessingDialog.cpp
+    src/ui/ProcessingDialog.h
+    src/ui/ProcessingDialog.ui
+    src/ui/ProjectorWidget.cpp
+    src/ui/ProjectorWidget.h
+    src/ui/TreeModel.cpp
+    src/ui/TreeModel.h
 )
 
-set(SMCP_FORMS
-    forms/AboutDialog.ui
-    forms/CalibrationDialog.ui
-    forms/MainWindow.ui
-    forms/ProcessingDialog.ui
+# Dialogo de captura: requiere Spinnaker.
+set(SMCP_SOURCES_UI_CAPTURE
+    src/ui/CaptureDialog.cpp
+    src/ui/CaptureDialog.h
+    src/ui/CaptureDialog.ui
+)
+
+set(SMCP_SOURCES_CORE
+    src/core/CalibrationData.cpp
+    src/core/CalibrationData.h
+    src/core/io_util.cpp
+    src/core/io_util.h
+    src/core/scan3d.cpp
+    src/core/scan3d.h
+    src/core/structured_light.cpp
+    src/core/structured_light.h
+)
+
+set(SMCP_SOURCES_CAMERA
+    src/camera/CameraSettings.h
+    src/camera/CameraUtilities.cpp
+    src/camera/CameraUtilities.h
+    src/camera/CameraWorker.cpp
+    src/camera/CameraWorker.h
+)
+
+set(SMCP_SOURCES_EXPORT
+    src/export/IOExport.cpp
+    src/export/IOExport.h
+)
+
+set(SMCP_SOURCES_COMMON
+    src/common/Literals.h
+    src/common/Settings.h
+    src/common/cvMatConvert.cpp
+    src/common/cvMatConvert.h
 )
 
 set(SMCP_RESOURCES
-    assets/assets.qrc
+    resources/resources.qrc
 )
 
 # ---------------------------------------------------------------------------
 # Ejecutable
 # ---------------------------------------------------------------------------
 add_executable(SMCP
-    ${SMCP_SOURCES_V1}
-    ${SMCP_SOURCES_V2}
-    ${SMCP_FORMS}
+    ${SMCP_SOURCES_APP}
+    ${SMCP_SOURCES_UI}
+    ${SMCP_SOURCES_CORE}
+    ${SMCP_SOURCES_EXPORT}
+    ${SMCP_SOURCES_COMMON}
     ${SMCP_RESOURCES}
 )
+
+if(SMCP_WITH_SPINNAKER)
+    target_sources(SMCP PRIVATE ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CAMERA})
+endif()
+
+# Vista de carpetas en Visual Studio / IDEs.
+source_group(TREE "${CMAKE_SOURCE_DIR}" FILES
+    ${SMCP_SOURCES_APP} ${SMCP_SOURCES_UI} ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CORE}
+    ${SMCP_SOURCES_CAMERA} ${SMCP_SOURCES_EXPORT} ${SMCP_SOURCES_COMMON} ${SMCP_RESOURCES})
 
 set_target_properties(SMCP PROPERTIES
     OUTPUT_NAME SMCP
     DEBUG_POSTFIX _d
     # Release sin consola (WinMain via Qt5::WinMain); Debug con consola.
     WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
-    AUTOUIC_SEARCH_PATHS "${CMAKE_SOURCE_DIR}/forms;${CMAKE_SOURCE_DIR}/src_v2"
 )
 
-target_include_directories(SMCP PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src_v2
-)
+# Un unico directorio de inclusion: los includes llevan el subdirectorio
+# ("app/Application.h", "core/scan3d.h", ...). Los .ui viven junto a su clase.
+target_include_directories(SMCP PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_compile_definitions(SMCP PRIVATE
     NOMINMAX
