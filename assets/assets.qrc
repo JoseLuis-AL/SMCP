@@ -1,0 +1,17 @@
+<RCC>
+  <qresource prefix="/">
+    <file>icon-object.svg</file>
+    <file>icon-decode.svg</file>
+    <file>icon-decode-projector.svg</file>
+    <file>icon-extract-corners.svg</file>
+    <file>icon-camera.svg</file>
+    <file>icon-check-all.svg</file>
+    <file>icon-uncheck-all.svg</file>
+    <file>icon-folder.svg</file>
+    <file>icon-image.svg</file>
+    <file>icon-calibration.svg</file>
+    <file>icon-3d.svg</file>
+    <file>icon-projector.svg</file>
+    <file>david.png</file>
+  </qresource>
+</RCC>

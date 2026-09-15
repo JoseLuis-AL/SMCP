@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ClassDiagram MajorVersion="1" MinorVersion="1">
+  <Class Name="SMCP::CaptureQDialog">
+    <Position X="0.75" Y="1" Width="3" />
+    <NestedTypes>
+      <Enum Name="SMCP::CaptureQDialog::CameraType" Collapsed="true">
+        <TypeIdentifier>
+          <NewMemberFileName>C:\Users\JoseLuisAL\Desktop\SCMP-FINAL\SMCP-CPP\src_v2\CaptureQDialog.h</NewMemberFileName>
+        </TypeIdentifier>
+      </Enum>
+    </NestedTypes>
+    <TypeIdentifier>
+      <HashCode>LSaCRASsoEIgCCURQAEGAIlII6WBIIIYABBCCAgMKJQ=</HashCode>
+      <FileName>C:\Users\JoseLuisAL\Desktop\SCMP-FINAL\SMCP-CPP\src_v2\CaptureQDialog.h</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="SMCP::CameraWorker">
+    <Position X="4" Y="0.75" Width="4.25" />
+    <TypeIdentifier>
+      <HashCode>AQAAFAAAIQgAgAQQgAAABABAoABgIAAAAAAKDWAgAIA=</HashCode>
+      <FileName>C:\Users\JoseLuisAL\Desktop\SCMP-FINAL\SMCP-CPP\src_v2\CameraWorker.h</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Font Name="Segoe UI" Size="9" />
+</ClassDiagram>
