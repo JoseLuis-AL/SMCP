@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Release|x64">
@@ -323,9 +323,9 @@
     <QtMoc Include="..\src_v2\PointcloudWidget.h" />
     <QtMoc Include="..\src_v2\PointcloudPreviewQDialog.h" />
     <ClInclude Include="..\src_v2\Settings.h" />
-    <ClInclude Include="SpinnakerCameraConfig.h" />
+    <ClInclude Include="..\src\SpinnakerCameraConfig.h" />
     <QtMoc Include="..\src\SpinnakerCaptureWorker.h" />
-    <ClInclude Include="Config.h" />
+    <ClInclude Include="..\src\Config.h" />
     <QtMoc Include="..\src\AboutDialog.hpp" />
     <QtMoc Include="..\src\Application.hpp" />
     <ClInclude Include="..\src\CalibrationData.hpp" />
