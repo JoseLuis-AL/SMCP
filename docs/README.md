@@ -6,9 +6,11 @@ Use these documents in this order:
    and troubleshoot the Windows build.
 2. [User guide](USER_GUIDE.md) — prepare hardware, capture data, calibrate, reconstruct,
    edit point clouds, and diagnose common workflow problems.
-3. [Architecture](ARCHITECTURE.md) — understand data flow, module ownership, threading,
+3. [Example datasets](EXAMPLES.md) — download the data-only `examples` branch and use it
+   to validate calibration, reconstruction, and point-cloud editing.
+4. [Architecture](ARCHITECTURE.md) — understand data flow, module ownership, threading,
    persistence, and extension points.
-4. [Visual style](STYLE.md) — maintain the Qt theme and add consistent controls and
+5. [Visual style](STYLE.md) — maintain the Qt theme and add consistent controls and
    dialogs.
 
 Additional material:

@@ -29,6 +29,27 @@ workspace/
   reconstructed-part.xyz
 ```
 
+## Use the example workspace
+
+SMCP provides a data-only `examples` branch with five complete capture sets, a saved
+calibration, and three XYZ point clouds. Clone it into a separate directory:
+
+```powershell
+git clone --branch examples --single-branch https://github.com/JoseLuis-AL/SMCP.git SMCP-examples
+```
+
+Start an SMCP executable built from `main`, click **Directory**, and select the root
+`SMCP-examples` directory as the workspace. The five timestamped directories appear as
+capture sets, while the three XYZ files become available in the Point Cloud Editor.
+
+For the supplied captures, configure 22 by 15 interior corners and a square size of 15 by
+15. Run **Decode**, **Extract Corners**, and **Calibrate** in that order. You can then
+select a decoded set and run **Reconstruct**, or load the supplied `calibration.yml` to
+test reconstruction without recalibrating.
+
+See [Example datasets](EXAMPLES.md) for the complete file inventory, expected editor
+tests, and detailed validation workflow.
+
 ## First launch
 
 1. Start `SMCP_d.exe` for Debug or `SMCP.exe` for Release from the generated `bin`
