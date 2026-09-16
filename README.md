@@ -1,98 +1,135 @@
-# SMCP — Escáner 3D por luz estructurada
+# SMCP: Camera-Proyector Measuring System
 
-Aplicación de escritorio (C++17, Qt 5, OpenCV) para calibrar un sistema proyector‑cámara y
-reconstruir nubes de puntos a partir de patrones Gray code proyectados sobre el objeto.
+SMCP is a Windows desktop application for calibrating a projector-camera system and
+reconstructing colored, oriented point clouds from projected Gray-code patterns. It is
+written in C++17 with Qt 5, OpenCV, and OpenGL.
 
-Implementa el método de calibración descrito en *Simple, Accurate, and Robust
-Projector‑Camera Calibration* (Daniel Moreno y Gabriel Taubin, 3DimPVT 2012,
-[doi:10.1109/3DIMPVT.2012.77](https://doi.org/10.1109/3DIMPVT.2012.77)) y lo extiende con:
+The calibration workflow implements the method described in *Simple, Accurate, and Robust
+Projector-Camera Calibration* by Daniel Moreno and Gabriel Taubin (3DimPVT 2012,
+[doi:10.1109/3DIMPVT.2012.77](https://doi.org/10.1109/3DIMPVT.2012.77)).
 
-- Proyección y captura automática de patrones Gray code.
-- Captura desde cámaras FLIR/Teledyne mediante el SDK Spinnaker.
-- Triangulación a nubes de puntos orientadas con color y exportación a PLY/XYZ.
-- Visor 3D integrado (OpenGL) de la nube reconstruida.
-- Editor de nubes de puntos (`.xyz`): eliminación de outliers, ajuste RANSAC de planos y
-  esferas, comparación con la nube original y guardado, sin dependencias externas (solo OpenCV).
+## Features
 
-## Requisitos
+- Project and capture Gray-code sequences automatically.
+- Capture FLIR/Teledyne cameras through the optional Spinnaker SDK.
+- Decode projector correspondences and calibrate the camera-projector pair.
+- Reconstruct colored point clouds and inspect them in the integrated OpenGL viewer.
+- Export reconstructed data as PLY or XYZ.
+- Edit XYZ point clouds by removing statistical outliers and fitting RANSAC planes or
+  spheres.
+- Compare, rename, reorder, hide, delete, and export all point clouds in the editor.
 
-| Componente | Versión probada | Notas |
+## Requirements
+
+| Component | Tested version | Notes |
 |---|---|---|
-| Windows | 10 / 11 x64 | |
-| Visual Studio | 2026 (18.x, toolset v145) | Carga de trabajo *Desarrollo de escritorio con C++* con CMake ≥ 3.28 y Ninja. |
-| Qt | 5.14.2, kit `msvc2017_64` | Módulos `Core`, `Gui`, `Widgets`, `OpenGL`, `Concurrent`. |
-| OpenCV | 2.4.13 (paquete Windows, `build/x64/vc14`) | Módulos `core`, `imgproc`, `highgui`, `calib3d`, `features2d`, `flann`. |
-| Spinnaker SDK | 3.x / 4.x (`lib64/vs2017` o `lib64/vs2015`) | Opcional: `-DSMCP_WITH_SPINNAKER=OFF` compila sin cámara (el botón *Capture* lo indica). |
+| Windows | 10 or 11, x64 | The application is Windows-only. |
+| Visual Studio | 2026 (18.x, toolset v145) | Install **Desktop development with C++**, CMake 3.28 or newer, and Ninja. |
+| Qt | 5.14.2, `msvc2017_64` kit | Core, Gui, Widgets, OpenGL, and Concurrent modules. |
+| OpenCV | 2.4.13.6 Windows package | Requires the `build/x64/vc14` libraries. |
+| Spinnaker SDK | 3.x or 4.x | Optional; required only for direct FLIR/Teledyne capture. |
 
-Las instrucciones completas de instalación, configuración de rutas y compilación desde
-Visual Studio, Zed o línea de comandos están en [docs/BUILD.md](docs/BUILD.md).
+Qt and OpenCV are required. If Spinnaker is not installed, the bootstrap script creates a
+configuration with `SMCP_WITH_SPINNAKER=OFF`; calibration, reconstruction, and point-cloud
+editing remain available.
 
-## Compilación rápida
+## Quick start
+
+Run these commands from PowerShell at the repository root:
 
 ```powershell
-# 1. Detecta Qt, OpenCV y Spinnaker y genera CMakeUserPresets.json (o copia
-#    CMakeUserPresets.example.json y ajusta las tres rutas a mano).
+# Detect local dependencies and generate the untracked CMakeUserPresets.json file.
 .\scripts\bootstrap.ps1
 
-# 2. Configura y compila (importa el entorno de Visual Studio si hace falta).
+# Configure and build with Ninja and MSVC.
 .\scripts\build.ps1 -Config Debug
 
-# 3. Ejecuta.
+# Run the Debug executable.
 .\build\ninja-debug\bin\SMCP_d.exe
 ```
 
-En Visual Studio 2026 basta con **Archivo → Abrir → Carpeta** sobre la raíz del repositorio
-y elegir el preset `Ninja Debug (x64)` o `Ninja Release (x64)`; **F5** lanza el ejecutable.
-En Zed, `zed .` tras el primer build: clangd usa `build/ninja-debug/compile_commands.json`.
+Use `-Config Release` to produce `build/ninja-release/bin/SMCP.exe`. Add `-Run` to the
+build command to launch the resulting executable automatically.
 
-Presets de configuración: `ninja-debug`, `ninja-release` y `vs2026` (genera `SMCP.slnx`).
-El directorio de salida `build/<preset>/bin` contiene el ejecutable y todas las DLL
-necesarias (Qt, OpenCV, Spinnaker), de modo que arranca sin modificar `PATH`.
+The available configure presets are `ninja-debug`, `ninja-release`, and `vs2026`. The
+Visual Studio preset generates its solution under `build/vs2026`; its build presets are
+`vs2026-debug` and `vs2026-release`.
 
-## Estructura
+See [Building SMCP](docs/BUILD.md) for dependency locations, manual preset configuration,
+IDE setup, clean builds, troubleshooting, and Release distribution instructions.
 
+## Basic workflow
+
+1. Select a workspace directory.
+2. Disable automatic camera controls such as focus, exposure, gain, and white balance.
+3. Capture several Gray-code sets with the chessboard in different poses.
+4. Run **Decode**, **Extract Corners**, and **Calibrate**.
+5. Run **Reconstruct** to generate and display a point cloud.
+6. Open **Point Cloud** to remove outliers or fit planes and spheres.
+7. In the editor, click **Export** to write one XYZ file for every remaining cloud. Edited
+   row names are used as filenames; hidden clouds are exported and deleted clouds are not.
+
+For detailed operating instructions and file formats, read the
+[User Guide](docs/USER_GUIDE.md).
+
+## Repository layout
+
+```text
+CMakeLists.txt                 CMake build definition (CMake 3.28+, MSVC x64)
+CMakePresets.json              Shared preset bases without machine-specific paths
+CMakeUserPresets.example.json  Template for local Qt, OpenCV, and Spinnaker paths
+cmake/                         CMake dependency and clangd helper modules
+scripts/                       Dependency bootstrap and build helpers
+src/app/                       Application entry point and main window
+src/core/                      Algorithms, data objects, and shared utilities
+src/camera/                    Optional Spinnaker camera integration
+src/export/                    PLY and XYZ input/output
+src/ui/                        Qt dialogs with Designer forms
+src/ui/models/                 Qt item models
+src/ui/pointcloud_editor/      Point-cloud editor and parameter dialogs
+src/ui/preview/                Image and point-cloud preview widgets
+src/ui/widgets/                Reusable UI widgets
+resources/                     Qt resources, SVG icons, and the global QSS theme
+docs/                          Build, usage, architecture, style, and screenshot guides
 ```
-CMakeLists.txt                 Único sistema de build (CMake ≥ 3.28, MSVC x64)
-CMakePresets.json              Bases de los presets (sin rutas de máquina)
-CMakeUserPresets.example.json  Plantilla con las rutas de Qt, OpenCV y Spinnaker
-cmake/                         FindSpinnaker.cmake, PatchCompileCommands.cmake
-scripts/                       bootstrap.ps1 (detecta dependencias), build.ps1
-src/app                        main.cpp, Application, MainWindow (+ MainWindow.ui)
-src/ui                         Diálogos y widgets Qt (los .ui viven junto a su clase)
-src/core                       CalibrationData, structured_light, scan3d, io_util, pointcloud_ops
-src/camera                     CameraWorker, CameraUtilities, CameraSettings (Spinnaker)
-src/export                     IOExport (PLY / XYZ)
-src/common                     Settings.h, Literals.h, cvMatConvert
-resources/                     icons/, theme/smcp.qss y resources.qrc
-docs/                          BUILD.md, ARCHITECTURE.md, STYLE.md, samples/, screenshots/
-```
 
-Convenciones: todo el código vive en el namespace `smcp`, cabeceras `.h` con
-`#pragma once`, includes cualificados por módulo (`"core/scan3d.h"`), tabuladores y llaves
-Allman (`.editorconfig`, `.clang-format`). Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-para el flujo completo y [docs/STYLE.md](docs/STYLE.md) para el tema visual.
+All C++ code belongs to the `smcp` namespace. Headers use `#pragma once`, includes are
+qualified from `src` (for example, `"core/Scan3d.h"`), and formatting is defined by
+`.editorconfig` and `.clang-format`.
 
-## Configuración en tiempo de ejecución
+## Release distribution
 
-Los ajustes (directorio de trabajo, tablero, umbrales, cámara, proyector…) se guardan con
-`QSettings` en el ámbito de usuario y formato nativo: en Windows,
-`HKEY_CURRENT_USER\Software\CENAM\SMCP`. Todas las claves y valores por defecto están en
-[`src/common/Settings.h`](src/common/Settings.h). El repositorio no versiona datos de
-ejecución; [`docs/samples/sample_calibration.yml`](docs/samples/sample_calibration.yml) es
-un ejemplo del archivo de calibración que produce la aplicación.
+With `SMCP_DEPLOY_RUNTIME=ON` (the default), the Release build runs `windeployqt` and copies
+the required Qt plugins, OpenCV DLLs, and optional Spinnaker DLL next to `SMCP.exe`. Copy
+the complete `build/ninja-release/bin` directory to the target computer, not only the
+executable. The target computer must also have the matching Microsoft Visual C++ x64
+Redistributable installed; direct camera capture additionally requires compatible camera
+drivers.
 
-## Uso
+## Documentation
 
-1. Desactiva todos los ajustes automáticos de la cámara (enfoque, exposición, ganancia,
-   balance de blancos). El método requiere parámetros fijos.
-2. Captura varios juegos de patrones con el tablero de ajedrez en distintas posiciones
-   (*Capture*).
-3. Decodifica (*Decode*), extrae esquinas (*Extract Corners*) y calibra (*Calibrate*).
-4. Reconstruye (*Reconstruct*): la nube se guarda en XYZ o PLY y se muestra en *3D View*.
-5. Abre el editor (*Point Cloud*) para limpiar outliers, ajustar planos o esferas y guardar
-   el resultado.
+- [Documentation index](docs/README.md)
+- [Build and troubleshooting guide](docs/BUILD.md)
+- [User guide](docs/USER_GUIDE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [UI style guide](docs/STYLE.md)
 
-## Licencia
+Runtime settings are stored with `QSettings` under
+`HKEY_CURRENT_USER\Software\CENAM\SMCP`. The repository does not include user workspaces;
+[`docs/samples/sample_calibration.yml`](docs/samples/sample_calibration.yml) documents the
+calibration file schema.
 
-Software derivado del trabajo de Daniel Moreno y Gabriel Taubin (Brown University),
-distribuido bajo licencia BSD de 3 cláusulas. Ver [LICENSE](LICENSE).
+## Authors
+
+- José Luis Aguilera Luzania
+- Agustín Brau Ávila
+- Octavio Icasio Hernández
+
+## License
+
+SMCP was developed by José Luis Aguilera Luzania, Agustín Brau Ávila, and Octavio Icasio
+Hernández for the University of Sonora as a Master's thesis project and for CENAM as an
+internship project.
+
+The software derives from work by Daniel Moreno and Gabriel Taubin at Brown University and
+is distributed under the BSD 3-Clause License. See [LICENSE](LICENSE).

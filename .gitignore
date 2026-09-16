@@ -1,4 +1,4 @@
-# --- Salidas de build (CMake) ---
+# --- CMake build output ---
 build/
 out/
 cmake-build-*/
@@ -8,16 +8,18 @@ CMakeFiles/
 compile_commands.json
 .cache/
 
-# --- Visual Studio ("Abrir carpeta") ---
+# --- Visual Studio and Qt Creator ---
 .vs/
 *.user
+CMakeLists.txt.user*
 *.suo
 *.VC.db
 *.VC.opendb
 *.sln.docstates
 *.DotSettings.user
+*.autosave
 
-# --- Binarios y símbolos ---
+# --- Compiled binaries and symbols ---
 *.exe
 *.dll
 *.lib
@@ -27,21 +29,28 @@ compile_commands.json
 *.idb
 *.obj
 *.o
+*.dmp
 
-# --- Datos de ejecución (nunca versionar) ---
+# --- Generated runtime data ---
 *.ini
 calibration*.yml
-docs/screenshots/*.tmp
+calibration*.m
 
-# --- Editores ---
+# --- Editors ---
 .zed/*.local.json
 .idea/
-.vscode/
+.vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
 
-# --- Sistema ---
+# --- Temporary files ---
+*.tmp
+*.bak
+*~
+
+# --- Operating systems ---
 Thumbs.db
+Desktop.ini
 .DS_Store
 
 # --- Logs ---

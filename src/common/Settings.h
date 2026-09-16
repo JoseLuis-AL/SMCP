@@ -1,6 +1,6 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
-Copyright (c) 2024, José Luis Aguilera Luzania
+Copyright (c) 2024, José Luis Aguilera Luzania, Agustín Brau Ávila & Octavio Icasio Hernández
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,7 +37,7 @@ namespace App
 {
 	const auto Organization = "CENAM";
 	const auto App_Name = "SMCP";
-	const auto Window_Name = "SMCP - Camera-Projector Measurement System";
+	const auto Window_Name = "SMCP: Camera-Proyector Measuring System";
 
 	const auto Root_Directory = "App/RootDirectory";
 }

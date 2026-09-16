@@ -2,7 +2,6 @@
   <qresource prefix="/">
     <file alias="icon-object.svg">icons/icon-object.svg</file>
     <file alias="icon-decode.svg">icons/icon-decode.svg</file>
-    <file alias="icon-decode-projector.svg">icons/icon-decode-projector.svg</file>
     <file alias="icon-extract-corners.svg">icons/icon-extract-corners.svg</file>
     <file alias="icon-camera.svg">icons/icon-camera.svg</file>
     <file alias="icon-check-all.svg">icons/icon-check-all.svg</file>
@@ -13,11 +12,14 @@
     <file alias="icon-3d.svg">icons/icon-3d.svg</file>
     <file alias="icon-projector.svg">icons/icon-projector.svg</file>
     <file alias="unison.png">icons/logo_unison.png</file>
-    <file alias="icon-refresh.svg">icons/icon-refresh.svg</file>
-    <file alias="fit-command-icon.svg">icons/fit-command-icon.svg</file>
+    <file alias="resfresh-icon.svg">icons/resfresh-icon.svg</file>
+    <file alias="pointcloud-editor-icon.svg">icons/pointcloud-editor-icon.svg</file>
     <file alias="remove-outlier-command-icon.svg">icons/remove-outlier-command-icon.svg</file>
     <file alias="icon-save.svg">icons/icon-save.svg</file>
     <file alias="icon-close.svg">icons/icon-close.svg</file>
+    <file alias="eye-icon.svg">icons/eye-icon.svg</file>
+    <file alias="eye-closed-close.svg">icons/eye-closed-close.svg</file>
+    <file alias="trash-icon.svg">icons/trash-icon.svg</file>
     <file>theme/smcp.qss</file>
   </qresource>
 </RCC>

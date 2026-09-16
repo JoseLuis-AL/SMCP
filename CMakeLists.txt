@@ -89,28 +89,36 @@ set(SMCP_SOURCES_UI
     src/ui/AboutDialog.cpp
     src/ui/AboutDialog.h
     src/ui/AboutDialog.ui
-    src/ui/BusyCursorGuard.h
     src/ui/CalibrationDialog.cpp
     src/ui/CalibrationDialog.h
     src/ui/CalibrationDialog.ui
-    src/ui/ImageLabel.cpp
-    src/ui/ImageLabel.h
-    src/ui/PixmapWidget.cpp
-    src/ui/PixmapWidget.h
-    src/ui/PointcloudEditorDialog.cpp
-    src/ui/PointcloudEditorDialog.h
-    src/ui/PointcloudEditorDialog.ui
-    src/ui/PointcloudPreviewWidget.cpp
-    src/ui/PointcloudPreviewWidget.h
-    src/ui/PointcloudWidget.cpp
-    src/ui/PointcloudWidget.h
+    src/ui/models/TreeModel.cpp
+    src/ui/models/TreeModel.h
+    src/ui/pointcloud_editor/PointcloudEditorDialog.cpp
+    src/ui/pointcloud_editor/PointcloudEditorDialog.h
+    src/ui/pointcloud_editor/PointcloudEditorDialog.ui
+    src/ui/pointcloud_editor/PlaneFitDialog.cpp
+    src/ui/pointcloud_editor/PlaneFitDialog.h
+    src/ui/pointcloud_editor/PlaneFitDialog.ui
+    src/ui/pointcloud_editor/RemoveOutliersDialog.cpp
+    src/ui/pointcloud_editor/RemoveOutliersDialog.h
+    src/ui/pointcloud_editor/RemoveOutliersDialog.ui
+    src/ui/pointcloud_editor/SphereFitDialog.cpp
+    src/ui/pointcloud_editor/SphereFitDialog.h
+    src/ui/pointcloud_editor/SphereFitDialog.ui
+    src/ui/preview/ImageLabel.cpp
+    src/ui/preview/ImageLabel.h
+    src/ui/preview/PixmapWidget.cpp
+    src/ui/preview/PixmapWidget.h
+    src/ui/preview/PointcloudPreviewWidget.cpp
+    src/ui/preview/PointcloudPreviewWidget.h
+    src/ui/preview/PointcloudWidget.cpp
+    src/ui/preview/PointcloudWidget.h
     src/ui/ProcessingDialog.cpp
     src/ui/ProcessingDialog.h
     src/ui/ProcessingDialog.ui
-    src/ui/ProjectorWidget.cpp
-    src/ui/ProjectorWidget.h
-    src/ui/TreeModel.cpp
-    src/ui/TreeModel.h
+    src/ui/widgets/ProjectorWidget.cpp
+    src/ui/widgets/ProjectorWidget.h
 )
 
 # Dialogo de captura: requiere Spinnaker.
@@ -121,6 +129,7 @@ set(SMCP_SOURCES_UI_CAPTURE
 )
 
 set(SMCP_SOURCES_CORE
+    src/core/BusyCursorGuard.h
     src/core/CalibrationData.cpp
     src/core/CalibrationData.h
     src/core/IoUtil.cpp

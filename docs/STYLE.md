@@ -1,97 +1,116 @@
-# Tema visual
+# Visual style
 
-SMCP tiene **un solo tema**, definido en [`resources/theme/smcp.qss`](../resources/theme/smcp.qss)
-y aplicado una única vez en `smcp::Application::apply_theme()`
-([`src/app/Application.cpp`](../src/app/Application.cpp)):
+SMCP uses one application-wide theme from
+[`resources/theme/smcp.qss`](../resources/theme/smcp.qss). `Application::ApplyTheme()`
+applies it in three steps:
 
-1. `setStyle(QStyleFactory::create("Fusion"))` — estilo base neutro, igual en todas las
-   versiones de Windows.
-2. `setFont(QFont("Segoe UI", 9))` — fuente de aplicación; todos los widgets la heredan.
-3. `setStyleSheet(...)` con el contenido de `:/theme/smcp.qss` (embebido vía
-   `resources/resources.qrc`).
+1. select Qt's Fusion style for consistent controls across supported Windows versions;
+2. set Segoe UI 9 pt as the inherited application font; and
+3. load the embedded `:/theme/smcp.qss` stylesheet from `resources/resources.qrc`.
 
-Ningún archivo `.ui` define propiedades `styleSheet` ni `font`, y ningún widget llama a
-`setStyleSheet`/`setFont` en código. La única excepción es `ProjectorWidget`, que pinta
-la cruz de alineación con el color de acento (`#3e8948`) directamente con `QPainter`: no es
-un widget estilizable por QSS porque dibuja sobre el patrón proyectado a pantalla completa.
+Widget-specific styles should be exceptional. Keeping shared appearance in the QSS file
+makes new dialogs match the rest of the program without duplicating declarations in Qt
+Designer.
 
-## Tokens
+## Design tokens
 
-QSS no admite variables, así que los tokens se documentan en la cabecera del archivo y sus
-valores se repiten literalmente en las reglas. Si cambias un token, búscalo y sustitúyelo
-en toda la hoja.
+QSS has no variables, so the token values are documented here and repeated literally in
+the stylesheet. Search the complete QSS file before changing one.
 
-| Token | Valor | Uso |
+| Token | Value | Purpose |
 |---|---|---|
-| `base` | `#f0f0f0` | Fondo de ventanas, diálogos y grupos |
-| `surface` | `#ffffff` | Fondo de vistas (árbol, texto) y barra de progreso |
-| `border` | `#d1d1d1` | Borde y separador de `QGroupBox` |
-| `border-soft` | `#dcdcdc` | Borde de vistas, campos y progreso |
-| `hover` | `rgba(199,199,199,0.4)` | Fondo al pasar el ratón por los botones de vista |
-| `active` | `#c7c7c7` | Botón de vista pulsado o seleccionado |
-| `accent` | `#3e8948` | Relleno de `QProgressBar` y cruz de alineación |
-| Fuente base | Segoe UI 9 pt | Todo (vía `QApplication::setFont`) |
-| Título de grupo | 10 pt, negrita | `QGroupBox::title` |
-| Etiquetas "Acerca de" | 10 pt | `QDialog#AboutDialog QLabel` |
-| Subtítulo | 11 pt | `#course_label` del diálogo "Acerca de" |
-| Título | 16 pt | `#title_label` del diálogo "Acerca de" |
-| Radio | 4 px | Grupos, vistas, campos y botones de vista |
-| Margen de diálogo | 9 px, spacing 6 px | Layout raíz de cada `QDialog` (en el `.ui`) |
-| Margen de grupo | 6 px, spacing 6 px | Layouts internos de `MainWindow.ui` |
+| `base` | `#f0f0f0` | Main-window, dialog, and group backgrounds |
+| `surface` | `#ffffff` | Views, editors, and progress-bar background |
+| `border` | `#d1d1d1` | Group borders and separators |
+| `border-soft` | `#dcdcdc` | View, field, and progress borders |
+| `hover` | `rgba(199, 199, 199, 0.4)` | Hovered view selector |
+| `active` | `#c7c7c7` | Checked or pressed view selector |
+| `accent` | `#3e8948` | Progress and projector-alignment accent |
+| `overlay` | `rgba(20, 20, 20, 180)` | Point-cloud list over the black 3D viewport |
+| `visibility` | `#00529d` | Point-cloud visibility button |
+| `delete` | `#e43b44` | Point-cloud delete button |
 
-## Organización de la hoja
+Typography and geometry conventions:
 
-Las reglas van de lo general a lo particular:
+| Element | Convention |
+|---|---|
+| Application text | Segoe UI 9 pt |
+| Group title | 10 pt, bold |
+| About-dialog labels | 10 pt |
+| About subtitle | 11 pt |
+| About title | 16 pt |
+| Standard corner radius | 4 px |
+| Dialog root layout | 9 px margins, 6 px spacing |
+| Main-window group content | 6 px margins, 6 px spacing |
 
-1. **Superficies base**: `QMainWindow`, `QDialog`, `QGroupBox`.
-2. **Grupos**: geometría del `QGroupBox` y de su `::title`. Dos variantes por `objectName`
-   porque el diseño original las distingue: los grupos de parámetros del panel derecho
-   (`#checkerboard_group`, `#robust_decode_group`, `#calibration_group`,
-   `#reconstruction_group`) llevan solo separador superior; los de proyector y cámara
-   (`#projector_group`, `#camera_group`) llevan borde completo.
-3. **Vistas y campos**: `QTreeView`, `QListView`, `QTableView`, `QTextEdit`,
-   `QPlainTextEdit`.
-4. **Selector de vista**: los `QToolButton` dentro de `#current_image_group` son planos y
-   muestran estado `checked`. Está acotado al grupo para que los botones de acciones
-   (`Capture`, `Decode`, …), que también son `QToolButton`, conserven el aspecto normal.
-5. **Editor de nubes de puntos** (`QDialog#PointcloudEditorDialog`): barra de comandos con
-   `QToolButton` planos (texto junto al icono, `padding: 6px`) y la lista superpuesta del
-   visor 3D (`#pointcloud_overlay_list`, `#pointcloud_overlay_label`,
-   `#pointcloud_overlay_delete`), que es la única superficie oscura del tema
-   (`rgba(20,20,20,180)` sobre el fondo negro del visor) porque flota sobre la nube.
-6. **Progreso**: `QProgressBar` y su `::chunk` con el acento.
-7. **Diálogo "Acerca de"**: tamaños de fuente de sus etiquetas.
+## Stylesheet organization
 
-Regla general: **selecciona por tipo de widget**; usa `objectName` solo cuando un widget
-concreto debe diferir del resto (como los casos anteriores).
+Rules in `smcp.qss` move from broad to specific:
 
-## Cómo añadir un widget nuevo sin romper el tema
+1. base surfaces (`QMainWindow`, `QDialog`, `QGroupBox`);
+2. group-box geometry and titles;
+3. item views and text fields;
+4. the Current View tool buttons and their checked state;
+5. point-cloud editor controls and preview overlay;
+6. progress bar; and
+7. About-dialog typography.
 
-- Crea el `.ui` sin tocar `styleSheet` ni `font` en ningún widget. Qt Designer permite
-  editarlas, pero cualquier valor ahí *gana* al tema global y reintroduce inconsistencias.
-- Usa los tipos estándar (`QGroupBox`, `QLineEdit`, `QToolButton`, …): ya están cubiertos.
-  Si el widget hereda de uno estándar, hereda también sus reglas.
-- Layout raíz de un diálogo: margen 9 y spacing 6; layouts dentro de un grupo: 6 y 6.
-  Fíjalos explícitamente en el `.ui` para no depender de los valores por defecto del estilo.
-- Si el widget necesita un color, usa uno de los tokens y añade la regla al bloque que le
-  corresponda en `smcp.qss`, preferiblemente por tipo (`QMiWidget { ... }`). Reserva
-  `#objectName` para excepciones puntuales y documenta el porqué en un comentario.
-- Si el widget pinta con `QPainter` (como `ProjectorWidget` o `PixmapWidget`), toma los
-  colores de la tabla de tokens y deja constancia en este documento.
-- Para comprobar el resultado, compila y abre cada diálogo: `MainWindow`, `Capture`,
-  `Calibration`, `About` y `Processing` deben compartir fondo, tipografía y bordes.
+Prefer selectors by widget type. Use an `objectName` selector only when one concrete widget
+must differ from other widgets of the same type. For example, the right-side parameter
+groups use a top separator while camera and projector groups use a complete border.
 
-## Antes y después
+The Current View button rules are scoped to `#current_image_group`. This prevents Capture,
+Decode, and other `QToolButton` actions from inheriting the flat selector appearance.
 
-Capturas de `build/ninja-debug/bin/SMCP_d.exe` en Windows 11 (tema claro), antes
-(estilos incrustados en los `.ui`, estilo nativo de Windows) y después (Fusion +
-`smcp.qss`). El cambio es visualmente neutro salvo por las inconsistencias corregidas:
-tamaños de fuente unificados (antes convivían 9 pt, 10 pt, `10px` y valores heredados),
-controles nativos de Windows sustituidos por Fusion y márgenes de diálogo homogéneos.
+## Point-cloud overlay
 
-| | Antes | Después |
-|---|---|---|
-| Ventana principal | ![](screenshots/before-main.png) | ![](screenshots/after-main.png) |
-| Captura | ![](screenshots/before-capture.png) | ![](screenshots/after-capture.png) |
-| Calibración | ![](screenshots/before-calibration.png) | ![](screenshots/after-calibration.png) |
-| Acerca de | ![](screenshots/before-about.png) | ![](screenshots/after-about.png) |
+`PointcloudPreviewWidget` places a compact list on top of its black OpenGL viewport. Each
+row contains:
+
+- a circular color swatch matching the cloud's rendered color;
+- a name, editable by double-clicking it;
+- the current point count;
+- a blue visibility button with a white open-eye or closed-eye icon; and
+- a red delete button with a white trash icon.
+
+The overlay surface and buttons are defined in QSS. The color swatch is a deliberate
+runtime `setStyleSheet()` exception because its value belongs to each cloud, not to the
+application theme. `ProjectorWidget` is the other color exception: it paints the alignment
+cross with `QPainter` because the mark is part of the projected image.
+
+## Adding UI without breaking consistency
+
+- Create form-based dialogs as `.ui` files and keep the form next to its C++ class.
+- Do not set `font` or `styleSheet` properties in Designer for ordinary controls; local
+  properties override the global theme.
+- Use standard Qt widgets whenever possible so existing rules apply automatically.
+- Use 9 px margins and 6 px spacing on a dialog's root layout. Use 6 px for nested control
+  groups.
+- Put reusable previews in `src/ui/preview`, item models in `src/ui/models`, and widgets
+  without their own form in `src/ui/widgets`.
+- If a new control needs a semantic color, reuse a token or add and document one here and in
+  the QSS header.
+- Add SVGs and other embedded assets to `resources/resources.qrc`. Prefer `currentColor` or
+  a white fill/stroke for icons displayed on dark or saturated button backgrounds.
+- Verify normal, hover, pressed, checked, disabled, and keyboard-focus states.
+
+## Current visual reference
+
+These screenshots were captured from the current Release build. They are visual references,
+not pixel-perfect automated snapshots.
+
+| Window | Reference |
+|---|---|
+| Main window | ![](screenshots/MainWindow.png) |
+| Capture | ![](screenshots/CaptureDialog.png) |
+| Calibration | ![](screenshots/CalibrationDialog.png) |
+| About | ![](screenshots/About.png) |
+
+The point-cloud editor screenshots demonstrate its operations:
+
+| State | Reference |
+|---|---|
+| Loaded cloud | ![](screenshots/PointcloudEditorLoad.png) |
+| Outlier comparison | ![](screenshots/PointcloudEditorRemoveOutliers.png) |
+| Plane fitting | ![](screenshots/PointcloudEditorFitPlanes.png) |
+| Sphere fitting | ![](screenshots/PointcloudEditorFitSpheres.png) |

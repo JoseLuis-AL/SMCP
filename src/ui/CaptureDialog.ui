@@ -539,13 +539,13 @@
   <customwidget>
    <class>smcp::ImageLabel</class>
    <extends>QWidget</extends>
-   <header>ui/ImageLabel.h</header>
+   <header>ui/preview/ImageLabel.h</header>
    <container>1</container>
   </customwidget>
   <customwidget>
    <class>smcp::PixmapWidget</class>
    <extends>QWidget</extends>
-   <header>ui/PixmapWidget.h</header>
+   <header>ui/preview/PixmapWidget.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

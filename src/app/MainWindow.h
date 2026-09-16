@@ -1,6 +1,6 @@
 /*
 Copyright (c) 2014, Daniel Moreno and Gabriel Taubin
-Copyright (c) 2024, José Luis Aguilera Luzania
+Copyright (c) 2024, José Luis Aguilera Luzania, Agustín Brau Ávila & Octavio Icasio Hernández
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

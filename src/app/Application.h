@@ -1,6 +1,6 @@
 /*
 Copyright (c) 2014, Daniel Moreno and Gabriel Taubin
-Copyright (c) 2024, José Luis Aguilera Luzania
+Copyright (c) 2024, José Luis Aguilera Luzania, Agustín Brau Ávila & Octavio Icasio Hernández
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <opencv2/core/core.hpp>
 
-#include "ui/TreeModel.h"
+#include "ui/models/TreeModel.h"
 #include "app/MainWindow.h"
 #include "ui/ProcessingDialog.h"
 #include "core/CalibrationData.h"

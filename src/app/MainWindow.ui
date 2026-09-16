@@ -339,12 +339,12 @@
              </property>
              <property name="icon">
               <iconset resource="../../resources/resources.qrc">
-               <normaloff>:/icon-object.svg</normaloff>:/icon-object.svg</iconset>
+               <normaloff>:/pointcloud-editor-icon.svg</normaloff>:/pointcloud-editor-icon.svg</iconset>
              </property>
              <property name="iconSize">
               <size>
-               <width>25</width>
-               <height>25</height>
+               <width>50</width>
+               <height>50</height>
               </size>
              </property>
              <property name="toolButtonStyle">
@@ -647,12 +647,10 @@
           </widget>
          </item>
          <item row="0" column="2">
-          <widget class="QSpinBox" name="corner_count_y_spin">
-          </widget>
+          <widget class="QSpinBox" name="corner_count_y_spin"/>
          </item>
          <item row="0" column="1">
-          <widget class="QSpinBox" name="corner_count_x_spin">
-          </widget>
+          <widget class="QSpinBox" name="corner_count_x_spin"/>
          </item>
         </layout>
        </widget>
@@ -710,8 +708,7 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="QSpinBox" name="threshold_spin">
-          </widget>
+          <widget class="QSpinBox" name="threshold_spin"/>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="b_label">
@@ -797,8 +794,7 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="QSpinBox" name="homography_window_spin">
-          </widget>
+          <widget class="QSpinBox" name="homography_window_spin"/>
          </item>
         </layout>
        </widget>
@@ -990,13 +986,13 @@
   <customwidget>
    <class>smcp::ImageLabel</class>
    <extends>QWidget</extends>
-   <header>ui/ImageLabel.h</header>
+   <header>ui/preview/ImageLabel.h</header>
    <container>1</container>
   </customwidget>
   <customwidget>
    <class>smcp::PointcloudWidget</class>
    <extends>QWidget</extends>
-   <header>ui/PointcloudWidget.h</header>
+   <header>ui/preview/PointcloudWidget.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

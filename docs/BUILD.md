@@ -1,40 +1,76 @@
-# Compilar SMCP
+# Building SMCP on Windows
 
-Guía completa para compilar el proyecto en Windows con CMake. Hay un único sistema de
-build (CMake + presets); no existen archivos `.pro`, `.vcxproj` ni `.sln` versionados.
+This guide covers the supported CMake build on 64-bit Windows. The repository does not
+track generated Visual Studio solutions, `.vcxproj` files, or qmake projects.
 
-## 1. Requisitos
+## Quick start
 
-| Componente | Versión | Dónde obtenerlo | Notas |
-|---|---|---|---|
-| Visual Studio 2026 Community | 18.x, toolset v145 | visualstudio.microsoft.com | Carga de trabajo **Desarrollo de escritorio con C++** con los componentes *Herramientas de CMake de C++ para Windows* (incluye CMake ≥ 3.28 y Ninja) y *Windows 11 SDK*. |
-| Qt | 5.14.2, kit **msvc2017_64** | Qt Online Installer (archivo → 5.14.2) | Módulos Core, Gui, Widgets, OpenGL, Concurrent. El kit msvc2017_64 es ABI‑compatible con los toolsets v141…v145. |
-| OpenCV | 2.4.13 (paquete Windows) | github.com/opencv/opencv/releases (opencv-2.4.13.6-vc14.exe) | Se usa el binario `build/x64/vc14`. |
-| Spinnaker SDK | 3.x / 4.x (Teledyne FLIR) | flir.com/products/spinnaker-sdk | Opcional. Sin él, `SMCP_WITH_SPINNAKER=OFF`. |
+Install the required dependencies, open PowerShell in the repository root, and run:
 
-Rutas de referencia de una instalación típica (las que usa `CMakeUserPresets.example.json`):
-
+```powershell
+.\scripts\bootstrap.ps1
+.\scripts\build.ps1 -Config Debug
+.\build\ninja-debug\bin\SMCP_d.exe
 ```
+
+`bootstrap.ps1` detects dependencies and creates the machine-local
+`CMakeUserPresets.json`. `build.ps1` imports the Visual Studio x64 environment, configures
+CMake, builds the application, and deploys the runtime DLLs beside the executable.
+
+If no FLIR/Teledyne camera is needed, Spinnaker can be omitted. The bootstrap script will
+automatically write `SMCP_WITH_SPINNAKER=OFF` when it cannot find the SDK. Capture will be
+disabled, but loading, processing, calibration, reconstruction, visualization, and point
+cloud editing remain available.
+
+## Requirements
+
+| Component | Tested version | Required installation |
+|---|---|---|
+| Windows | 10 or 11, x64 | A current Windows SDK |
+| Visual Studio | 2022 (17.x) or 2026 (18.x) | **Desktop development with C++**, MSVC x64, CMake 3.28 or newer, and Ninja |
+| Qt | 5.14.2, `msvc2017_64` kit | Core, Gui, Widgets, OpenGL, and Concurrent |
+| OpenCV | 2.4.13.6 Windows package | `build/x64/vc14`, including core, imgproc, highgui, calib3d, features2d, and flann |
+| Spinnaker SDK | 3.x or 4.x | Optional; required only for direct FLIR/Teledyne capture |
+
+The older Qt and OpenCV binaries are ABI-compatible with the supported MSVC toolsets in
+this project configuration. The build is intentionally Windows/MSVC-only.
+
+Typical dependency locations are:
+
+```text
 D:\Qt\Qt5.14.2\5.14.2\msvc2017_64
 D:\OpenCV\opencv\build
 D:\Program Files\Teledyne\Spinnaker
 ```
 
-## 2. Configurar las rutas (bootstrap)
+## Configure dependency paths
 
-Las rutas de máquina **no** están en `CMakePresets.json`. Viven en `CMakeUserPresets.json`,
-que está en `.gitignore`. Hay dos formas de crearlo:
+Machine-specific paths belong in `CMakeUserPresets.json`, which is ignored by Git.
 
-**Automática** (busca Qt, OpenCV y Spinnaker en `C:` y `D:` y escribe el archivo):
+### Automatic setup
+
+The recommended option searches common locations on `C:`, `D:`, and `E:`:
 
 ```powershell
 .\scripts\bootstrap.ps1
 ```
 
-Parámetros útiles: `-Qt`, `-OpenCV`, `-Spinnaker` para indicar rutas a mano y `-Force`
-para regenerar un archivo existente. El script informa de lo que no encuentra.
+Explicit hints can be supplied when dependencies are installed elsewhere:
 
-**Manual**: copia la plantilla y edita las tres rutas del preset oculto `local-paths`.
+```powershell
+.\scripts\bootstrap.ps1 `
+  -Qt "C:\Qt\5.14.2\msvc2017_64" `
+  -OpenCV "C:\Libraries\opencv\build" `
+  -Spinnaker "C:\Program Files\Teledyne\Spinnaker" `
+  -Force
+```
+
+`-Force` replaces an existing user preset. Qt and OpenCV are mandatory; Spinnaker is
+optional.
+
+### Manual setup
+
+Copy the example and edit the hidden `local-paths` preset:
 
 ```powershell
 Copy-Item CMakeUserPresets.example.json CMakeUserPresets.json
@@ -49,126 +85,173 @@ Copy-Item CMakeUserPresets.example.json CMakeUserPresets.json
 }
 ```
 
-`Qt5_DIR` admite tanto la raíz del kit (`…/msvc2017_64`) como `…/lib/cmake/Qt5`.
+`Qt5_DIR` may point either to the kit root or to its `lib/cmake/Qt5` directory.
 
-### Presets disponibles
+## Build options
 
-| Preset de configuración | Generador | Salida |
-|---|---|---|
-| `ninja-debug` | Ninja + cl x64, Debug | `build/ninja-debug/bin/SMCP_d.exe` (con consola) |
-| `ninja-release` | Ninja + cl x64, Release | `build/ninja-release/bin/SMCP.exe` (sin consola) |
-| `vs2026` | Visual Studio 18 2026, x64 (multi‑config) | `build/vs2026/SMCP.slnx` (solución generada, no versionada), binarios en `build/vs2026/bin` |
-
-Presets de build: `ninja-debug`, `ninja-release`, `vs2026-debug`, `vs2026-release`.
-
-Los presets visibles se definen en `CMakeUserPresets.json` heredando de las bases ocultas
-(`ninja-debug-base`, `ninja-release-base`, `vs2026-base`) de `CMakePresets.json`. Así el
-archivo versionado no contiene rutas y el tuyo solo aporta las tres variables.
-
-Tras compilar, el directorio `bin` contiene todo lo necesario para ejecutar sin modificar
-`PATH`: `windeployqt` copia Qt y sus plugins, y CMake copia las DLL de OpenCV y de
-Spinnaker (Spinnaker, GenICam y OpenMP).
-
-## 3. Compilar
-
-### Desde Visual Studio 2026 (Abrir carpeta)
-
-1. **Archivo → Abrir → Carpeta…** y elige la raíz del repositorio.
-2. En la barra de herramientas aparece el desplegable de configuraciones con
-   `Ninja Debug (x64)`, `Ninja Release (x64)` y `Visual Studio 2026`. Elige uno.
-3. **Compilar → Compilar todo** (Ctrl+Mayús+B).
-4. **F5** ejecuta `SMCP_d.exe` (o `SMCP.exe` en Release). No hace falta `launch.vs.json`:
-   el único ejecutable del proyecto se selecciona como elemento de inicio.
-
-Si VS no muestra los presets, comprueba que existe `CMakeUserPresets.json` y usa
-**Proyecto → Eliminar caché y volver a configurar**.
-
-### Desde Zed
-
-El repositorio incluye `.zed/settings.json` (clangd sobre `build/ninja-debug`), `.zed/tasks.json`
-y `.clangd`.
-
-1. Ejecuta una vez `.\scripts\bootstrap.ps1` y la tarea **SMCP: configure (ninja-debug)**
-   (o `.\scripts\build.ps1`). Esto genera `build/ninja-debug/compile_commands.json`.
-2. Abre la carpeta en Zed: `zed .`. clangd ofrece autocompletado y diagnósticos.
-3. Tareas (`task: spawn`): *build debug*, *build release*, *run (debug)*.
-
-CMake completa `compile_commands.json` con `/vctoolsdir` y `/winsdkdir` (ver
-`cmake/PatchCompileCommands.cmake`) para que clangd, en modo clang‑cl, encuentre la STL de
-MSVC y el Windows SDK aunque Zed no se abra desde un *Developer Prompt*.
-
-### Desde la terminal
-
-Con cualquier PowerShell (el script importa el entorno x64 de Visual Studio si hace falta):
+### PowerShell helper
 
 ```powershell
+# Debug build
 .\scripts\build.ps1 -Config Debug
-```
 
-```powershell
+# Release build and launch it
 .\scripts\build.ps1 -Config Release -Run
-```
 
-```powershell
+# Generate and build with the Visual Studio 2026 generator
 .\scripts\build.ps1 -Generator vs2026 -Config Release
 ```
 
-`-Clean` borra `build/<preset>` antes de configurar.
+Pass `-Clean` to remove the selected build directory before configuring it again.
 
-Con CMake directamente, desde un **Developer PowerShell for VS 2026** (para que `cl`,
-`cmake` y `ninja` estén en `PATH`):
+### CMake presets
+
+Run these commands from a **Developer PowerShell for Visual Studio**:
 
 ```powershell
 cmake --preset ninja-debug
-```
-
-```powershell
 cmake --build --preset ninja-debug
 ```
 
-## 4. Opciones de CMake
+Available presets are:
 
-| Variable | Por defecto | Efecto |
+| Configure preset | Generator | Output |
 |---|---|---|
-| `SMCP_WITH_SPINNAKER` | `ON` | Busca Spinnaker, define `USE_SPINNAKER` y enlaza `Spinnaker::Spinnaker`. |
-| `SMCP_DEPLOY_RUNTIME` | `ON` | Ejecuta `windeployqt` y copia las DLL de OpenCV/Spinnaker en el post‑build. |
-| `Qt5_DIR`, `OpenCV_DIR`, `SPINNAKER_DIR` | — | Rutas de las dependencias (normalmente vía `CMakeUserPresets.json`). |
+| `ninja-debug` | Ninja + MSVC x64, Debug | `build/ninja-debug/bin/SMCP_d.exe` |
+| `ninja-release` | Ninja + MSVC x64, Release | `build/ninja-release/bin/SMCP.exe` |
+| `vs2026` | Visual Studio 18 2026, x64 | Generated solution under `build/vs2026` |
 
-## 5. Solución de problemas
+Build presets are `ninja-debug`, `ninja-release`, `vs2026-debug`, and
+`vs2026-release`.
 
-**"Could not find a package configuration file provided by Qt5"**
-`Qt5_DIR` no apunta a un kit válido. Debe existir
-`<kit>/lib/cmake/Qt5/Qt5Config.cmake`. Instala el kit **msvc2017_64** de Qt 5.14.2.
+### Visual Studio
 
-**"Found OpenCV … but the following modules are missing" o no encuentra `OpenCVConfig.cmake`**
-`OpenCV_DIR` debe ser la carpeta `build` del paquete Windows, que contiene
-`OpenCVConfig.cmake` y `x64/vc14/lib`. El `CMakeLists.txt` fija `OpenCV_ARCH=x64` y
-`OpenCV_RUNTIME=vc14` porque el script de OpenCV 2.4 no reconoce toolsets modernos.
+1. Run `bootstrap.ps1` once.
+2. Select **File > Open > Folder** and open the repository root.
+3. Select `Ninja Debug (x64)`, `Ninja Release (x64)`, or `Visual Studio 2026` from the
+   configuration list.
+4. Select **Build > Build All**.
+5. Press **F5** to run the selected executable.
 
-**"No se encontro el SDK Spinnaker"**
-Define `SPINNAKER_DIR` (raíz con `include`, `lib64`, `bin64`) o configura con
-`-DSMCP_WITH_SPINNAKER=OFF`. El módulo `cmake/FindSpinnaker.cmake` acepta las bibliotecas
-`Spinnaker_v141` (lib64/vs2017) y `Spinnaker_v140` (lib64/vs2015). En instalaciones donde
-`lib64/vs2017` solo trae los módulos GPU se usa automáticamente `vs2015`.
+If presets do not appear, verify that `CMakeUserPresets.json` exists and use
+**Project > Delete Cache and Reconfigure**.
 
-**El ejecutable no arranca: falta `Qt5Core.dll`, `opencv_core2413.dll`, `Spinnaker_v140.dll`…**
-El post‑build no se ejecutó (`SMCP_DEPLOY_RUNTIME=OFF`) o se copió el `.exe` fuera de `bin`.
-Vuelve a compilar; todas las DLL se dejan junto al ejecutable. En Debug, Spinnaker requiere
-además el runtime de depuración de VC (`MSVCP140D.dll`, `VCOMP140D.dll`), presente en cualquier
-máquina con Visual Studio.
+### Zed
 
-**"cl.exe no está en PATH" al usar `cmake --preset` a mano**
-Abre un *Developer PowerShell for VS 2026* o usa `scripts\build.ps1`, que importa el entorno.
+The repository contains `.zed/settings.json`, `.zed/tasks.json`, and `.clangd`.
 
-**clangd en Zed: "'type_traits' file not found" o sin autocompletado**
-Compila al menos una vez el preset `ninja-debug`; `compile_commands.json` se genera y se
-completa con las rutas del toolset en ese build.
+1. Run `bootstrap.ps1` and build `ninja-debug` once.
+2. Open the repository with `zed .`.
+3. Use the supplied configure, build, and run tasks.
 
-**clangd se reinicia al pasar el ratón por un `++` de un iterador**
-Es un fallo conocido de clangd (22.x y 23.x) en modo clang‑cl con los iteradores de
-`std::vector<cv::Point2f>` de `scan3d.cpp` y `Application.cpp` (`clangd --check` lo
-reproduce). Zed relanza el servidor solo; el diagnóstico y el autocompletado del resto del
-archivo no se ven afectados.
+The build patches `compile_commands.json` with the MSVC toolset and Windows SDK paths so
+clangd works even when Zed was not started from a Developer PowerShell.
 
-**Visual Studio compila con la configuración equivocada**
-Comprueba el desplegable de configuraciones; cada preset tiene su propio `build/<preset>`.
+## CMake options
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SMCP_WITH_SPINNAKER` | `ON` | Builds camera capture and links the Spinnaker SDK |
+| `SMCP_DEPLOY_RUNTIME` | `ON` | Deploys Qt, OpenCV, and Spinnaker runtime DLLs beside the executable |
+| `Qt5_DIR` | none | Qt kit root or `lib/cmake/Qt5` directory |
+| `OpenCV_DIR` | none | OpenCV package `build` directory |
+| `SPINNAKER_DIR` | none | Spinnaker SDK root |
+
+With runtime deployment enabled, CMake runs `windeployqt` and copies the Qt plugins,
+OpenCV DLLs, and optional Spinnaker DLL into the output `bin` directory. The MSVC runtime
+is deliberately not copied.
+
+## Verifying the build
+
+A successful Debug build ends by linking and deploying:
+
+```text
+Linking CXX executable bin\SMCP_d.exe
+...\build\ninja-debug\bin\SMCP_d.exe 64 bit, debug executable
+```
+
+For a stronger check, force a clean rebuild:
+
+```powershell
+.\scripts\build.ps1 -Config Debug -Clean
+```
+
+Then launch the executable and confirm that the main window opens. A camera is not needed
+for this smoke test.
+
+## Distributing a Release build
+
+Build the Release configuration:
+
+```powershell
+.\scripts\build.ps1 -Config Release -Clean
+```
+
+Distribute the complete `build/ninja-release/bin` directory. Do not copy `SMCP.exe`
+alone: the adjacent Qt plugins and DLLs are part of the application package.
+
+The target Windows computer does not need Qt, OpenCV, Spinnaker development files, CMake,
+Ninja, or Visual Studio. It does need:
+
+- the Microsoft Visual C++ x64 Redistributable compatible with the toolset used to build
+  SMCP; and
+- compatible FLIR/Teledyne drivers when direct camera capture is required.
+
+Build with `SMCP_WITH_SPINNAKER=OFF` when the distributed application only needs existing
+captures and point clouds. This removes the Spinnaker runtime dependency and disables
+direct camera capture.
+
+## Troubleshooting
+
+### Qt5 package not found
+
+`Qt5_DIR` must resolve to a kit containing `lib/cmake/Qt5/Qt5Config.cmake`. Install the
+Qt 5.14.2 `msvc2017_64` kit and regenerate the user presets.
+
+### OpenCV package or modules not found
+
+`OpenCV_DIR` must point to the Windows package's `build` directory. It must contain
+`OpenCVConfig.cmake` and `x64/vc14/lib`. The project fixes `OpenCV_ARCH=x64` and
+`OpenCV_RUNTIME=vc14` because OpenCV 2.4 does not recognize modern MSVC toolset names.
+
+### Spinnaker not found
+
+Either set `SPINNAKER_DIR` to a root containing `include`, `lib64`, and `bin64`, or build
+with `SMCP_WITH_SPINNAKER=OFF`. `FindSpinnaker.cmake` supports the `Spinnaker_v141` and
+`Spinnaker_v140` library layouts.
+
+### `cl.exe`, CMake, or Ninja is not in `PATH`
+
+Use `scripts\build.ps1`, or run CMake from a Developer PowerShell. If the helper cannot
+import the environment, verify that the Visual Studio C++ workload and CMake tools are
+installed.
+
+### The executable reports missing DLLs
+
+Do not move the executable out of its generated `bin` directory. Rebuild with
+`SMCP_DEPLOY_RUNTIME=ON`; the required Qt plugins and runtime DLLs are deployed there.
+
+### clangd cannot find standard headers
+
+Build `ninja-debug` at least once so `compile_commands.json` is generated and patched with
+the MSVC and Windows SDK paths.
+
+### Visual Studio uses the wrong configuration
+
+Check the active preset. Each preset has an independent directory under `build/`.
+
+### CMake says the compiler changed
+
+A build directory cannot safely switch between different MSVC installations or toolsets.
+Regenerate only the affected preset directory with:
+
+```powershell
+.\scripts\build.ps1 -Config Debug -Clean
+```
+
+Use `-Config Release` instead when the message refers to `build/ninja-release`.
+
+## Next step
+
+Continue with the [User Guide](USER_GUIDE.md) to configure hardware, calibrate the system,
+reconstruct a point cloud, and use the point cloud editor.

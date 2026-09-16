@@ -78,9 +78,13 @@ function Import-VsDevEnvironment {
     # VsDevCmd.bat invoca vswhere.exe por nombre; lo ponemos en PATH para evitar su aviso.
     $env:PATH = (Split-Path $vswhere) + ';' + $env:PATH
     $envDump = cmd.exe /d /c "`"$vsDevCmd`" -arch=x64 -host_arch=x64 -no_logo 2>nul && set"
+    # Some hosts expose both PATH and Path. cmd.exe prints both, but VsDevCmd updates only
+    # PATH; importing the later stale alias would silently discard the compiler directory.
+    $importedNames = @{}
     foreach ($line in $envDump) {
-        if ($line -match '^([^=]+)=(.*)$') {
+        if ($line -match '^([^=]+)=(.*)$' -and -not $importedNames.ContainsKey($Matches[1])) {
             [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+            $importedNames[$Matches[1]] = $true
         }
     }
 

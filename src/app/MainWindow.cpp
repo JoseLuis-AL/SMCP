@@ -53,8 +53,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ui/CaptureDialog.h"
 #endif
 #include "export/IOExport.h"
-#include "ui/BusyCursorGuard.h"
-#include "ui/PointcloudEditorDialog.h"
+#include "core/BusyCursorGuard.h"
+#include "ui/pointcloud_editor/PointcloudEditorDialog.h"
 
 namespace smcp
 {
