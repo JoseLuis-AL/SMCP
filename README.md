@@ -1,6 +1,6 @@
 # SMCP: Camera-Projector Measuring System
 
-SMCP is a Windows desktop application for calibrating a projector-camera system and
+SMCP is a Windows desktop application for calibrating a camera-projector system and
 reconstructing colored, oriented point clouds from projected Gray-code patterns. It is
 written in C++17 with Qt 5, OpenCV, and OpenGL.
 
