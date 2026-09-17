@@ -1,25 +1,25 @@
-# Script (cmake -P) que completa compile_commands.json para clangd.
+# Script (cmake -P) that completes compile_commands.json for clangd.
 #
-# clangd interpreta cl.exe en modo clang-cl, pero fuera de un "Developer
-# Command Prompt" no sabe donde esta el toolset de MSVC (falla con
-# "'type_traits' file not found"). Se anaden a cada comando las opciones
-# /vctoolsdir y, si se conocen, /winsdkdir + /winsdkversion, que cl.exe nunca
-# ve (solo viven en la base de compilacion) y clang-cl si entiende.
+# clangd interprets cl.exe in clang-cl mode, but outside a Developer Command
+# Prompt it cannot find the MSVC toolset (it fails with "'type_traits' file not
+# found"). Every command receives /vctoolsdir and, when known, /winsdkdir and
+# /winsdkversion. cl.exe never sees these options (they only exist in the
+# compilation database), and clang-cl understands them.
 #
-# Variables esperadas:
-#   DB           ruta de compile_commands.json
-#   VCTOOLSDIR   raiz del toolset (…/VC/Tools/MSVC/<version>)
-#   WINSDKDIR    raiz del Windows SDK (opcional)
-#   WINSDKVER    version del Windows SDK (opcional)
+# Expected variables:
+#   DB           path of compile_commands.json
+#   VCTOOLSDIR   toolset root (.../VC/Tools/MSVC/<version>)
+#   WINSDKDIR    Windows SDK root (optional)
+#   WINSDKVER    Windows SDK version (optional)
 
 if(NOT EXISTS "${DB}")
-    message(STATUS "clangd: no existe ${DB}; nada que hacer.")
+    message(STATUS "clangd: ${DB} does not exist; nothing to do.")
     return()
 endif()
 
 file(READ "${DB}" _content)
 if(_content MATCHES "/vctoolsdir")
-    return()  # ya parcheado
+    return()  # already patched
 endif()
 
 set(_extra " /vctoolsdir \\\"${VCTOOLSDIR}\\\"")
@@ -27,7 +27,7 @@ if(WINSDKDIR AND WINSDKVER)
     string(APPEND _extra " /winsdkdir \\\"${WINSDKDIR}\\\" /winsdkversion ${WINSDKVER}")
 endif()
 
-# Cada comando contiene exactamente un " -c <archivo>"; se insertan las opciones delante.
+# Each command contains exactly one " -c <file>"; the options are inserted before it.
 string(REPLACE " -c " "${_extra} -c " _patched "${_content}")
 file(WRITE "${DB}" "${_patched}")
-message(STATUS "clangd: compile_commands.json completado con ${_extra}")
+message(STATUS "clangd: compile_commands.json completed with ${_extra}")

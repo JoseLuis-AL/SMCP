@@ -5,7 +5,7 @@
     {
       "name": "local-paths",
       "hidden": true,
-      "description": "Rutas de esta maquina. Ajusta las tres variables y guarda como CMakeUserPresets.json.",
+      "description": "Machine-specific paths. Adjust these values and save the file as CMakeUserPresets.json.",
       "cacheVariables": {
         "Qt5_DIR": "D:/Qt/Qt5.14.2/5.14.2/msvc2017_64/lib/cmake/Qt5",
         "OpenCV_DIR": "D:/OpenCV/opencv/build",
@@ -25,7 +25,7 @@
     },
     {
       "name": "vs2026",
-      "displayName": "Visual Studio 2026 (.sln en build/vs2026)",
+      "displayName": "Visual Studio 2026 (solution in build/vs2026)",
       "inherits": [ "vs2026-base", "local-paths" ]
     }
   ],

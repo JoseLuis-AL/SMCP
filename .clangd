@@ -1,10 +1,10 @@
-# Configuracion de clangd para el proyecto (Zed y cualquier otro editor con LSP).
-# La base de compilacion la genera CMake con el preset ninja-debug.
+# clangd configuration for the project (Zed and any other LSP editor).
+# CMake generates the compilation database with the ninja-debug preset.
 CompileFlags:
   CompilationDatabase: build/ninja-debug
-  # cl.exe en compile_commands.json: clangd entra en modo clang-cl y localiza
-  # solo el toolset de MSVC y el Windows SDK instalados (no hace falta
-  # --query-driver). Se quitan las opciones que clang-cl no entiende.
+  # With cl.exe in compile_commands.json, clangd runs in clang-cl mode and finds the
+  # installed MSVC toolset and Windows SDK by itself (no --query-driver needed).
+  # Options that clang-cl does not understand are removed.
   Remove:
     - /MP
     - -MP
@@ -18,4 +18,4 @@ CompileFlags:
 Diagnostics:
   UnusedIncludes: None
   Suppress:
-    - attributes_misplaced   # __declspec en cabeceras del SDK Spinnaker que clang no acepta
+    - attributes_misplaced   # __declspec placement in Spinnaker SDK headers that clang rejects

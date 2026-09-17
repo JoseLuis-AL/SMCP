@@ -2,35 +2,34 @@
 FindSpinnaker
 -------------
 
-Localiza el SDK Spinnaker de FLIR/Teledyne y define el target importado
-``Spinnaker::Spinnaker`` (cabeceras + biblioteca Debug/Release).
+Finds the FLIR/Teledyne Spinnaker SDK and defines the imported target
+``Spinnaker::Spinnaker`` (headers plus Debug/Release libraries).
 
-Entrada
-^^^^^^^
+Input
+^^^^^
 
 ``SPINNAKER_DIR``
-  Raiz de la instalacion (contiene ``include``, ``lib64`` y ``bin64``).
-  Si no se indica se prueban las rutas habituales y la variable de entorno
-  ``SPINNAKER_DIR``.
+  Installation root (contains ``include``, ``lib64``, and ``bin64``).
+  When it is not set, the usual installation paths and the ``SPINNAKER_DIR``
+  environment variable are searched.
 
-Resultado
-^^^^^^^^^
+Result
+^^^^^^
 
 ``Spinnaker_FOUND``
 ``Spinnaker_INCLUDE_DIR``
 ``Spinnaker_LIBRARY_RELEASE`` / ``Spinnaker_LIBRARY_DEBUG``
 ``Spinnaker_RUNTIME_DIR``
-  Carpeta ``bin64/vsXXXX`` con las DLL.
+  ``bin64/vsXXXX`` directory containing the DLLs.
 ``Spinnaker_RUNTIME_RELEASE`` / ``Spinnaker_RUNTIME_DEBUG``
-  Listas de DLL necesarias en tiempo de ejecucion (Spinnaker, GenICam,
-  OpenMP) para copiar junto al ejecutable.
+  Runtime DLLs (Spinnaker, GenICam, OpenMP) to copy next to the executable.
 
-El SDK publica las bibliotecas por toolset (``lib64/vs2017`` -> ``*_v141``,
-``lib64/vs2015`` -> ``*_v140``). Se prefiere vs2017 y se cae a vs2015; ambas
-son ABI-compatibles con MSVC v141..v145.
+The SDK ships libraries per toolset (``lib64/vs2017`` -> ``*_v141``,
+``lib64/vs2015`` -> ``*_v140``). vs2017 is preferred and vs2015 is the fallback;
+both are ABI-compatible with MSVC v141..v145.
 #]=======================================================================]
 
-set(SPINNAKER_DIR "${SPINNAKER_DIR}" CACHE PATH "Raiz del SDK Spinnaker")
+set(SPINNAKER_DIR "${SPINNAKER_DIR}" CACHE PATH "Spinnaker SDK root")
 
 set(_spin_hints "${SPINNAKER_DIR}" "$ENV{SPINNAKER_DIR}")
 set(_spin_paths
@@ -49,7 +48,7 @@ set(_spin_root "")
 if(Spinnaker_INCLUDE_DIR)
     get_filename_component(_spin_root "${Spinnaker_INCLUDE_DIR}" DIRECTORY)
     if(NOT SPINNAKER_DIR)
-        set(SPINNAKER_DIR "${_spin_root}" CACHE PATH "Raiz del SDK Spinnaker" FORCE)
+        set(SPINNAKER_DIR "${_spin_root}" CACHE PATH "Spinnaker SDK root" FORCE)
     endif()
 endif()
 
@@ -67,7 +66,7 @@ find_library(Spinnaker_LIBRARY_DEBUG
     PATH_SUFFIXES lib64/vs2017 lib64/vs2015
     NO_DEFAULT_PATH)
 
-# Carpeta de DLL correspondiente al toolset de la biblioteca encontrada.
+# DLL directory matching the toolset of the library that was found.
 if(Spinnaker_LIBRARY_RELEASE)
     get_filename_component(_spin_lib_dir "${Spinnaker_LIBRARY_RELEASE}" DIRECTORY)
     get_filename_component(_spin_toolset "${_spin_lib_dir}" NAME)   # vs2017 | vs2015
@@ -77,7 +76,7 @@ if(Spinnaker_LIBRARY_RELEASE)
 
     set(Spinnaker_RUNTIME_DIR "${_spin_root}/bin64/${_spin_toolset}")
     if(NOT EXISTS "${Spinnaker_RUNTIME_DIR}/Spinnaker_${_spin_suffix}.dll")
-        # Instalaciones donde lib64/vs2017 solo trae los modulos GPU: las DLL viven en vs2015.
+        # Some installations ship only GPU modules in lib64/vs2017; their DLLs live in vs2015.
         set(Spinnaker_RUNTIME_DIR "${_spin_root}/bin64/vs2015")
     endif()
 
@@ -94,7 +93,7 @@ endif()
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Spinnaker
     REQUIRED_VARS Spinnaker_INCLUDE_DIR Spinnaker_LIBRARY_RELEASE
-    FAIL_MESSAGE "No se encontro el SDK Spinnaker. Define SPINNAKER_DIR (p. ej. C:/Program Files/Teledyne/Spinnaker) o compila con -DSMCP_WITH_SPINNAKER=OFF.")
+    FAIL_MESSAGE "Spinnaker SDK not found. Set SPINNAKER_DIR (for example C:/Program Files/Teledyne/Spinnaker) or build with -DSMCP_WITH_SPINNAKER=OFF.")
 
 if(Spinnaker_FOUND AND NOT TARGET Spinnaker::Spinnaker)
     add_library(Spinnaker::Spinnaker UNKNOWN IMPORTED)

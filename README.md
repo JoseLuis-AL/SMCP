@@ -1,4 +1,4 @@
-# SMCP: Camera-Proyector Measuring System
+# SMCP: Camera-Projector Measuring System
 
 SMCP is a Windows desktop application for calibrating a projector-camera system and
 reconstructing colored, oriented point clouds from projected Gray-code patterns. It is
@@ -17,7 +17,10 @@ Projector-Camera Calibration* by Daniel Moreno and Gabriel Taubin (3DimPVT 2012,
 - Export reconstructed data as PLY or XYZ.
 - Edit XYZ point clouds by removing statistical outliers and fitting RANSAC planes or
   spheres.
-- Compare, rename, reorder, hide, delete, and export all point clouds in the editor.
+- Optionally denoise point clouds with AI models (Score Denoise, StraightPCF, and
+  PointCleanNet) running in WSL.
+- Compare, recolor, rename, reorder, hide, delete, and export point clouds in the editor,
+  either one per file or combined into one file.
 
 ## Requirements
 
@@ -28,6 +31,7 @@ Projector-Camera Calibration* by Daniel Moreno and Gabriel Taubin (3DimPVT 2012,
 | Qt | 5.14.2, `msvc2017_64` kit | Core, Gui, Widgets, OpenGL, and Concurrent modules. |
 | OpenCV | 2.4.13.6 Windows package | Requires the `build/x64/vc14` libraries. |
 | Spinnaker SDK | 3.x or 4.x | Optional; required only for direct FLIR/Teledyne capture. |
+| WSL 2 + Ubuntu | 22.04.5, PyTorch 2.8 with CUDA 12.8 | Optional; required only for the AI models. An NVIDIA GPU is recommended. |
 
 Qt and OpenCV are required. If Spinnaker is not installed, the bootstrap script creates a
 configuration with `SMCP_WITH_SPINNAKER=OFF`; calibration, reconstruction, and point-cloud
@@ -65,9 +69,10 @@ IDE setup, clean builds, troubleshooting, and Release distribution instructions.
 3. Capture several Gray-code sets with the chessboard in different poses.
 4. Run **Decode**, **Extract Corners**, and **Calibrate**.
 5. Run **Reconstruct** to generate and display a point cloud.
-6. Open **Point Cloud** to remove outliers or fit planes and spheres.
-7. In the editor, click **Export** to write one XYZ file for every remaining cloud. Edited
-   row names are used as filenames; hidden clouds are exported and deleted clouds are not.
+6. Open **Point Cloud**, click **Load** for each XYZ file to compare, and remove outliers,
+   fit planes and spheres, or run an optional AI model on the first cloud of the list.
+7. In the editor, click **Export** to write the first cloud, one XYZ file per cloud, or all
+   visible clouds combined. Edited row names are used as filenames.
 
 For detailed operating instructions and file formats, read the
 [User Guide](docs/USER_GUIDE.md).
@@ -78,8 +83,10 @@ For detailed operating instructions and file formats, read the
 CMakeLists.txt                 CMake build definition (CMake 3.28+, MSVC x64)
 CMakePresets.json              Shared preset bases without machine-specific paths
 CMakeUserPresets.example.json  Template for local Qt, OpenCV, and Spinnaker paths
-cmake/                         CMake dependency and clangd helper modules
-scripts/                       Dependency bootstrap and build helpers
+cmake/                         CMake dependency, compiler, and clangd helper modules
+scripts/                       Dependency bootstrap, build, and release packaging helpers
+scripts-wsl/                   Optional WSL setup, AI model registry, smcp launcher, and tests
+src/ai/                        Asynchronous bridge to the AI models in WSL
 src/app/                       Application entry point and main window
 src/core/                      Algorithms, data objects, and shared utilities
 src/camera/                    Optional Spinnaker camera integration
@@ -90,6 +97,7 @@ src/ui/pointcloud_editor/      Point-cloud editor and parameter dialogs
 src/ui/preview/                Image and point-cloud preview widgets
 src/ui/widgets/                Reusable UI widgets
 resources/                     Qt resources, SVG icons, and the global QSS theme
+tests/                         C++ tests run with CTest
 docs/                          Build, usage, architecture, style, and screenshot guides
 ```
 
@@ -100,16 +108,24 @@ qualified from `src` (for example, `"core/Scan3d.h"`), and formatting is defined
 ## Release distribution
 
 With `SMCP_DEPLOY_RUNTIME=ON` (the default), the Release build runs `windeployqt` and copies
-the required Qt plugins, OpenCV DLLs, and optional Spinnaker DLL next to `SMCP.exe`. Copy
-the complete `build/ninja-release/bin` directory to the target computer, not only the
-executable. The target computer must also have the matching Microsoft Visual C++ x64
-Redistributable installed; direct camera capture additionally requires compatible camera
-drivers.
+the required Qt plugins, OpenCV DLLs, and optional Spinnaker DLL next to `SMCP.exe`.
+
+```powershell
+.\scripts\package-release.ps1
+```
+
+This builds Release and writes `dist/SMCP-<version>-win64.zip`, a self-contained folder
+that also carries the Visual C++ runtime, the license, and the user documentation. Test
+executables are left out. Share or upload that archive; when copying files by hand, copy the
+complete `build/ninja-release/bin` directory and not only the executable. Direct camera
+capture on the target computer additionally requires compatible camera drivers, and the
+optional AI models require the WSL setup described in the quick start.
 
 ## Documentation
 
 - [Documentation index](docs/README.md)
 - [Build and troubleshooting guide](docs/BUILD.md)
+- [WSL models quick start](docs/WSL_MODELS_QUICKSTART.md) (optional AI models)
 - [User guide](docs/USER_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [UI style guide](docs/STYLE.md)

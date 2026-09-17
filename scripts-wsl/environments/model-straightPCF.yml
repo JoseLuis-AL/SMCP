@@ -1,0 +1,18 @@
+name: model-straightPCF
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy=1.26
+  - scipy
+  - scikit-learn
+  - tqdm
+  - pyyaml
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --find-links https://data.pyg.org/whl/torch-2.8.0+cu128.html
+      - torch==2.8.0+cu128
+      - torch-cluster==1.6.3+pt28cu128
+      - torch-geometric==2.6.1

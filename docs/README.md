@@ -4,13 +4,15 @@ Use these documents in this order:
 
 1. [Build guide](BUILD.md) — install dependencies, configure local paths, compile, run,
    and troubleshoot the Windows build.
-2. [User guide](USER_GUIDE.md) — prepare hardware, capture data, calibrate, reconstruct,
+2. [WSL models quick start](WSL_MODELS_QUICKSTART.md) — optional; recreate Miniconda, the
+   three AI environments, and the shared model launcher. Skip it if you do not use AI models.
+3. [User guide](USER_GUIDE.md) — prepare hardware, capture data, calibrate, reconstruct,
    edit point clouds, and diagnose common workflow problems.
-3. [Example datasets](EXAMPLES.md) — download the data-only `examples` branch and use it
+4. [Example datasets](EXAMPLES.md) — download the data-only `examples` branch and use it
    to validate calibration, reconstruction, and point-cloud editing.
-4. [Architecture](ARCHITECTURE.md) — understand data flow, module ownership, threading,
+5. [Architecture](ARCHITECTURE.md) — understand data flow, module ownership, threading,
    persistence, and extension points.
-5. [Visual style](STYLE.md) — maintain the Qt theme and add consistent controls and
+6. [Visual style](STYLE.md) — maintain the Qt theme and add consistent controls and
    dialogs.
 
 Additional material:

@@ -1,24 +1,24 @@
 <#
 .SYNOPSIS
-    Detecta Qt 5.14.2, OpenCV 2.4.13 y Spinnaker y genera CMakeUserPresets.json.
+    Detects Qt 5.14.2, OpenCV 2.4.13, and Spinnaker and generates CMakeUserPresets.json.
 
 .DESCRIPTION
-    Busca las dependencias en las ubicaciones habituales de C: y D: (o en las
-    rutas indicadas por parametro / variables de entorno), toma
-    CMakeUserPresets.example.json como plantilla, sustituye las rutas y escribe
-    CMakeUserPresets.json en la raiz del repositorio. Informa de lo que falta.
+    Searches the usual installation locations on C:, D:, and E: (or the paths given
+    through parameters and environment variables), uses CMakeUserPresets.example.json
+    as a template, replaces its paths, and writes CMakeUserPresets.json to the
+    repository root. Missing dependencies are reported.
 
 .PARAMETER Qt
-    Raiz del kit de Qt (p. ej. D:\Qt\Qt5.14.2\5.14.2\msvc2017_64) o su lib\cmake\Qt5.
+    Qt kit root (for example D:\Qt\Qt5.14.2\5.14.2\msvc2017_64) or its lib\cmake\Qt5 directory.
 
 .PARAMETER OpenCV
-    Carpeta que contiene OpenCVConfig.cmake (p. ej. D:\OpenCV\opencv\build).
+    Directory containing OpenCVConfig.cmake (for example D:\OpenCV\opencv\build).
 
 .PARAMETER Spinnaker
-    Raiz del SDK Spinnaker (p. ej. C:\Program Files\Teledyne\Spinnaker).
+    Spinnaker SDK root (for example C:\Program Files\Teledyne\Spinnaker).
 
 .PARAMETER Force
-    Sobrescribe CMakeUserPresets.json si ya existe.
+    Overwrites CMakeUserPresets.json when it already exists.
 
 .EXAMPLE
     .\scripts\bootstrap.ps1
@@ -38,7 +38,7 @@ $examplePath = Join-Path $repoRoot 'CMakeUserPresets.example.json'
 $outputPath = Join-Path $repoRoot 'CMakeUserPresets.json'
 
 if ((Test-Path $outputPath) -and -not $Force) {
-    Write-Host "Ya existe $outputPath. Usa -Force para regenerarlo." -ForegroundColor Yellow
+    Write-Host "$outputPath already exists. Use -Force to regenerate it." -ForegroundColor Yellow
     exit 0
 }
 
@@ -58,7 +58,7 @@ function Find-Qt {
         $candidates += "$d\Qt\Qt5.14.2\5.14.2\msvc2017_64"
         $candidates += "$d\Qt\5.14.2\msvc2017_64"
         $candidates += "$d\Qt5.14.2\5.14.2\msvc2017_64"
-        # Instalaciones con otro nombre de carpeta raiz: <unidad>\Qt*\[...\]5.14.2\msvc2017_64
+        # Installations with a different root directory name: <drive>\Qt*\[...\]5.14.2\msvc2017_64
         foreach ($pattern in @("$d\Qt*\5.14.2\msvc2017_64", "$d\Qt*\*\5.14.2\msvc2017_64")) {
             Resolve-Path -Path $pattern -ErrorAction SilentlyContinue | ForEach-Object { $candidates += $_.Path }
         }
@@ -76,7 +76,7 @@ function Find-Qt {
 }
 
 # ---------------------------------------------------------------------------
-# OpenCV 2.4.13 (paquete Windows: build\OpenCVConfig.cmake + x64\vc14)
+# OpenCV 2.4.13 (Windows package: build\OpenCVConfig.cmake + x64\vc14)
 # ---------------------------------------------------------------------------
 function Find-OpenCV {
     param([string]$Hint)
@@ -135,33 +135,33 @@ function Format-CMakePath {
     return ($Path -replace '\\', '/').TrimEnd('/')
 }
 
-Write-Host 'Buscando dependencias...' -ForegroundColor Cyan
+Write-Host 'Searching for dependencies...' -ForegroundColor Cyan
 $qtDir = Find-Qt -Hint $Qt
 $openCvDir = Find-OpenCV -Hint $OpenCV
 $spinnakerDir = Find-Spinnaker -Hint $Spinnaker
 
 $missing = @()
 if ($qtDir) { Write-Host "  [OK] Qt 5.14.2   : $qtDir" -ForegroundColor Green }
-else { Write-Host '  [--] Qt 5.14.2   : no encontrado (kit msvc2017_64)' -ForegroundColor Red; $missing += 'Qt' }
+else { Write-Host '  [--] Qt 5.14.2   : not found (msvc2017_64 kit)' -ForegroundColor Red; $missing += 'Qt' }
 
 if ($openCvDir) { Write-Host "  [OK] OpenCV 2.4  : $openCvDir" -ForegroundColor Green }
-else { Write-Host '  [--] OpenCV 2.4  : no encontrado (carpeta build con x64\vc14)' -ForegroundColor Red; $missing += 'OpenCV' }
+else { Write-Host '  [--] OpenCV 2.4  : not found (build directory with x64\vc14)' -ForegroundColor Red; $missing += 'OpenCV' }
 
 if ($spinnakerDir) { Write-Host "  [OK] Spinnaker   : $spinnakerDir" -ForegroundColor Green }
-else { Write-Host '  [--] Spinnaker   : no encontrado; se generara con SMCP_WITH_SPINNAKER=OFF' -ForegroundColor Yellow }
+else { Write-Host '  [--] Spinnaker   : not found; the preset will use SMCP_WITH_SPINNAKER=OFF' -ForegroundColor Yellow }
 
 # ---------------------------------------------------------------------------
-# Generar CMakeUserPresets.json a partir de la plantilla
+# Generate CMakeUserPresets.json from the template
 # ---------------------------------------------------------------------------
-# Se sustituyen los valores sobre el texto de la plantilla para conservar su formato.
+# Values are replaced in the template text so its formatting is preserved.
 $json = Get-Content -Raw -Path $examplePath
 if ($json -notmatch '"name":\s*"local-paths"') {
-    throw "La plantilla $examplePath no contiene el preset oculto 'local-paths'."
+    throw "The template $examplePath does not contain the hidden 'local-paths' preset."
 }
 
 $values = @{
-    'Qt5_DIR'             = if ($qtDir) { Format-CMakePath $qtDir } else { 'RUTA/A/Qt/5.14.2/msvc2017_64/lib/cmake/Qt5' }
-    'OpenCV_DIR'          = if ($openCvDir) { Format-CMakePath $openCvDir } else { 'RUTA/A/opencv/build' }
+    'Qt5_DIR'             = if ($qtDir) { Format-CMakePath $qtDir } else { 'PATH/TO/Qt/5.14.2/msvc2017_64/lib/cmake/Qt5' }
+    'OpenCV_DIR'          = if ($openCvDir) { Format-CMakePath $openCvDir } else { 'PATH/TO/opencv/build' }
     'SPINNAKER_DIR'       = if ($spinnakerDir) { Format-CMakePath $spinnakerDir } else { '' }
     'SMCP_WITH_SPINNAKER' = if ($spinnakerDir) { 'ON' } else { 'OFF' }
 }
@@ -170,21 +170,21 @@ foreach ($key in $values.Keys) {
     $replacement = '${1}"' + $values[$key] + '"'
     $json = (New-Object System.Text.RegularExpressions.Regex $pattern).Replace($json, $replacement, 1)
 }
-$json = $json -replace '"description":\s*"Rutas de esta maquina[^"]*"', '"description": "Rutas de esta maquina (generado por scripts/bootstrap.ps1)."'
+$json = $json -replace '"description":\s*"Machine-specific paths[^"]*"', '"description": "Machine-specific paths (generated by scripts/bootstrap.ps1)."'
 
 [System.IO.File]::WriteAllText($outputPath, $json, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host ''
-Write-Host "Escrito $outputPath" -ForegroundColor Green
+Write-Host "Wrote $outputPath" -ForegroundColor Green
 
 if ($missing.Count -gt 0) {
     Write-Host ''
-    Write-Host "Faltan dependencias obligatorias: $($missing -join ', ')." -ForegroundColor Red
-    Write-Host 'Instalalas o edita las rutas en CMakeUserPresets.json y vuelve a compilar.' -ForegroundColor Red
-    Write-Host 'Consulta docs/BUILD.md para los enlaces de descarga.' -ForegroundColor Red
+    Write-Host "Required dependencies are missing: $($missing -join ', ')." -ForegroundColor Red
+    Write-Host 'Install them, or edit the paths in CMakeUserPresets.json, and build again.' -ForegroundColor Red
+    Write-Host 'See docs/BUILD.md for the required versions and locations.' -ForegroundColor Red
     exit 2
 }
 
 Write-Host ''
-Write-Host 'Siguiente paso:' -ForegroundColor Cyan
-Write-Host '  .\scripts\build.ps1 -Config Debug     (o abre la carpeta en Visual Studio 2026)'
+Write-Host 'Next step:' -ForegroundColor Cyan
+Write-Host '  .\scripts\build.ps1 -Config Debug     (or open the folder in Visual Studio 2026)'

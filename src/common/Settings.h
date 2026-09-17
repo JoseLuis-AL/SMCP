@@ -37,7 +37,7 @@ namespace App
 {
 	const auto Organization = "CENAM";
 	const auto App_Name = "SMCP";
-	const auto Window_Name = "SMCP: Camera-Proyector Measuring System";
+	const auto Window_Name = "SMCP: Camera-Projector Measuring System";
 
 	const auto Root_Directory = "App/RootDirectory";
 }

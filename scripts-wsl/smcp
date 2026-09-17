@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+
+"""Versioned dispatcher and metadata API for SMCP point-cloud models."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import re
+import signal
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+
+SCHEMA_VERSION = 1
+SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+SUPPORTED_TYPES = {"string", "integer", "number", "boolean"}
+SAFE_JOB_ID = re.compile(r"^[A-Fa-f0-9-]{32,36}$")
+SUPERVISOR_FLAG = "--supervise-job"
+TERMINATION_GRACE_SECONDS = 10.0
+
+
+class RegistryError(ValueError):
+    """Raised when the registry or a requested configuration is invalid."""
+
+
+def registry_path() -> Path:
+    override = os.environ.get("SMCP_MODELS_REGISTRY")
+    return Path(override).expanduser() if override else Path.home() / "smcp-models/models.json"
+
+
+def conda_path() -> Path:
+    override = os.environ.get("SMCP_CONDA_EXE")
+    return Path(override).expanduser() if override else Path.home() / "miniconda3/bin/conda"
+
+
+def model_root() -> Path:
+    override = os.environ.get("SMCP_MODELS_DIR")
+    return Path(override).expanduser() if override else Path.home() / "smcp-models"
+
+
+def read_json_object(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise RegistryError(f"{label} does not exist: {path}") from error
+    except (OSError, json.JSONDecodeError) as error:
+        raise RegistryError(f"could not read {label} {path}: {error}") from error
+    if not isinstance(value, dict):
+        raise RegistryError(f"{label} must contain a JSON object")
+    return value
+
+
+def value_matches_type(value: Any, expected: str) -> bool:
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    return False
+
+
+def validate_configuration(configuration: dict[str, Any], schema: dict[str, Any], label: str) -> None:
+    unknown = sorted(set(configuration) - set(schema))
+    if unknown:
+        raise RegistryError(f"{label} contains unknown parameter(s): {', '.join(unknown)}")
+
+    for key, value in configuration.items():
+        rule = schema.get(key)
+        if not isinstance(rule, dict):
+            raise RegistryError(f"schema for {key!r} must be an object")
+        expected = rule.get("type")
+        if expected not in SUPPORTED_TYPES:
+            raise RegistryError(f"schema for {key!r} has unsupported type {expected!r}")
+        if not value_matches_type(value, expected):
+            raise RegistryError(f"{label}.{key} must be {expected}")
+        if "enum" in rule and value not in rule["enum"]:
+            raise RegistryError(f"{label}.{key} must be one of {rule['enum']}")
+        if expected in {"integer", "number"}:
+            if "minimum" in rule and value < rule["minimum"]:
+                raise RegistryError(f"{label}.{key} must be at least {rule['minimum']}")
+            if "maximum" in rule and value > rule["maximum"]:
+                raise RegistryError(f"{label}.{key} must be at most {rule['maximum']}")
+            if "exclusive_minimum" in rule and value <= rule["exclusive_minimum"]:
+                raise RegistryError(f"{label}.{key} must be greater than {rule['exclusive_minimum']}")
+            if "exclusive_maximum" in rule and value >= rule["exclusive_maximum"]:
+                raise RegistryError(f"{label}.{key} must be less than {rule['exclusive_maximum']}")
+
+
+def validate_relative_file(raw: Any, label: str) -> str:
+    if not isinstance(raw, str) or not raw:
+        raise RegistryError(f"{label} must be a non-empty relative path")
+    path = Path(raw)
+    if path.is_absolute() or ".." in path.parts:
+        raise RegistryError(f"{label} must stay inside its model directory")
+    return raw
+
+
+def validate_model(raw: Any, root: Path, conda: Path, check_files: bool = True) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise RegistryError("every models entry must be an object")
+    required_strings = ("id", "display_name", "environment", "directory", "runner", "output_suffix")
+    for key in required_strings:
+        if not isinstance(raw.get(key), str) or not raw[key]:
+            raise RegistryError(f"model field {key!r} must be a non-empty string")
+    for key in ("id", "environment", "directory", "output_suffix"):
+        if not SAFE_IDENTIFIER.fullmatch(raw[key]):
+            raise RegistryError(f"model field {key!r} contains unsafe characters")
+    if not isinstance(raw.get("enabled", True), bool):
+        raise RegistryError("model field 'enabled' must be boolean")
+
+    runner_name = validate_relative_file(raw["runner"], "runner")
+    required_files = raw.get("required_files", [])
+    if not isinstance(required_files, list):
+        raise RegistryError("required_files must be an array")
+    required_files = [validate_relative_file(item, "required_files entry") for item in required_files]
+
+    configuration = raw.get("configuration")
+    schema = raw.get("configuration_schema")
+    if not isinstance(configuration, dict) or not isinstance(schema, dict):
+        raise RegistryError("configuration and configuration_schema must be JSON objects")
+    for key, rule in schema.items():
+        if not isinstance(key, str) or not key or not isinstance(rule, dict):
+            raise RegistryError("configuration_schema entries must be named objects")
+        if rule.get("type") not in SUPPORTED_TYPES:
+            raise RegistryError(f"schema for {key!r} has an unsupported type")
+    validate_configuration(configuration, schema, f"configuration for {raw['id']}")
+
+    directory = root / raw["directory"]
+    if check_files:
+        if not conda.is_file():
+            raise RegistryError(f"conda was not found at {conda}")
+        environment_python = conda.parent.parent / "envs" / raw["environment"] / "bin/python"
+        if not environment_python.is_file():
+            raise RegistryError(f"conda environment is missing: {raw['environment']}")
+        for relative in [runner_name, *required_files]:
+            if not (directory / relative).is_file():
+                raise RegistryError(f"required model file is missing: {directory / relative}")
+
+    model = dict(raw)
+    model["required_files"] = required_files
+    model["enabled"] = raw.get("enabled", True)
+    return model
+
+
+def load_registry(check_files: bool = True) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    document = read_json_object(registry_path(), "model registry")
+    if document.get("schema_version") != SCHEMA_VERSION:
+        raise RegistryError(
+            f"unsupported registry schema_version {document.get('schema_version')!r}; expected {SCHEMA_VERSION}"
+        )
+    raw_models = document.get("models")
+    if not isinstance(raw_models, list):
+        raise RegistryError("registry field 'models' must be an array")
+
+    models: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    for index, raw in enumerate(raw_models):
+        try:
+            enabled = raw.get("enabled", True) if isinstance(raw, dict) else True
+            model = validate_model(raw, model_root(), conda_path(), check_files and enabled)
+            if model["id"] in models:
+                raise RegistryError(f"duplicate model id {model['id']!r}")
+            if model["enabled"]:
+                models[model["id"]] = model
+        except RegistryError as error:
+            model_id = raw.get("id", index) if isinstance(raw, dict) else index
+            errors.append(f"{model_id}: {error}")
+    return models, errors
+
+
+def public_model(model: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": model["id"],
+        "display_name": model["display_name"],
+        "output_suffix": model["output_suffix"],
+        "configuration": model["configuration"],
+        "configuration_schema": model["configuration_schema"],
+    }
+
+
+def output_path(raw_output: str, input_path: Path, suffix: str) -> Path:
+    requested = Path(raw_output).expanduser()
+    tag = "_" + suffix
+    looks_like_directory = (
+        raw_output.endswith(("/", os.sep))
+        or (requested.exists() and requested.is_dir())
+        or not requested.suffix
+    )
+    if looks_like_directory:
+        requested.mkdir(parents=True, exist_ok=True)
+        return requested / f"{input_path.stem}{tag}{input_path.suffix}"
+    if requested.stem.endswith(tag):
+        return requested
+    return requested.with_name(f"{requested.stem}{tag}{requested.suffix}")
+
+
+def configuration_arguments(configuration: dict[str, Any]) -> list[str]:
+    arguments: list[str] = []
+    for key, value in configuration.items():
+        flag = "--" + key.replace("_", "-")
+        if isinstance(value, bool):
+            if value:
+                arguments.append(flag)
+        else:
+            arguments.extend((flag, str(value)))
+    return arguments
+
+
+def job_file(job_id: str) -> Path:
+    if not SAFE_JOB_ID.fullmatch(job_id):
+        raise RegistryError("invalid inference job identifier")
+    directory = Path("/tmp/smcp-jobs")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return directory / f"{job_id}.pid"
+
+
+def cancel_job(job_id: str) -> int:
+    path = job_file(job_id)
+    try:
+        pid = int(path.read_text(encoding="ascii").strip())
+        os.killpg(pid, signal.SIGTERM)
+    except FileNotFoundError:
+        path.with_suffix(".cancel").touch()
+        return 0
+    except (OSError, ValueError) as error:
+        raise RegistryError(f"could not cancel inference job {job_id}: {error}") from error
+    return 0
+
+
+def process_group_members(group_id: int) -> list[int]:
+    """Returns the live processes of a process group, excluding the calling process."""
+    members: list[int] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            # The command name may contain spaces, so fields are read after its closing parenthesis.
+            fields = (entry / "stat").read_text(encoding="ascii", errors="replace").rsplit(")", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        if len(fields) > 2 and fields[0] != "Z" and int(fields[2]) == group_id:
+            members.append(int(entry.name))
+    return members
+
+
+def terminate_process_group(child: subprocess.Popen) -> None:
+    """Stops every process in the supervisor's group, escalating to SIGKILL after a grace period."""
+    group_id = os.getpgrp()
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    try:
+        os.killpg(group_id, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    deadline = time.monotonic() + TERMINATION_GRACE_SECONDS
+    while time.monotonic() < deadline:
+        child.poll()
+        if not process_group_members(group_id):
+            return
+        time.sleep(0.2)
+
+    for pid in process_group_members(group_id):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    child.poll()
+
+
+def supervise_job(parent_fd: int, job_id: str | None, command: list[str]) -> int:
+    """Runs one inference command and removes its whole process tree when nobody waits for it.
+
+    The launcher keeps the write end of a pipe whose read end is `parent_fd`. The kernel closes it
+    however the launcher ends, including SIGKILL when Windows terminates wsl.exe, so EOF means the
+    job was abandoned. SIGTERM, used by --cancel-job, stops the job as well.
+    """
+    stop = threading.Event()
+    child = subprocess.Popen(command)
+    # Installed after starting the child, which must keep the default signal dispositions.
+    for signal_number in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(signal_number, lambda *_: stop.set())
+
+    def wait_for_launcher() -> None:
+        try:
+            while os.read(parent_fd, 1024):
+                pass
+        except OSError:
+            pass
+        stop.set()
+
+    threading.Thread(target=wait_for_launcher, daemon=True).start()
+    while child.poll() is None and not stop.wait(0.5):
+        pass
+
+    stopped = child.poll() is None
+    if stopped:
+        terminate_process_group(child)
+    if job_id:
+        pid_path = job_file(job_id)
+        pid_path.unlink(missing_ok=True)
+        pid_path.with_suffix(".cancel").unlink(missing_ok=True)
+    return 128 + signal.SIGTERM if stopped else child.returncode
+
+
+def supervise_from_arguments(arguments: list[str]) -> int:
+    """Parses `FD JOB_ID -- COMMAND...`, the private interface used by the inference launcher."""
+    if len(arguments) < 4 or arguments[2] != "--":
+        print(f"smcp: usage: {SUPERVISOR_FLAG} FD JOB_ID -- COMMAND...", file=sys.stderr)
+        return 2
+    job_id = None if arguments[1] == "-" else arguments[1]
+    return supervise_job(int(arguments[0]), job_id, arguments[3:])
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="smcp", description="Run and inspect SMCP point-cloud models")
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument("--list-models", action="store_true")
+    actions.add_argument("--describe-model", metavar="MODEL")
+    actions.add_argument("--validate-registry", action="store_true")
+    actions.add_argument("--cancel-job", metavar="JOB_ID")
+    parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    parser.add_argument("--model")
+    parser.add_argument("--input")
+    parser.add_argument("--output")
+    parser.add_argument("--config-json")
+    parser.add_argument("--job-id")
+    return parser
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == SUPERVISOR_FLAG:
+        return supervise_from_arguments(sys.argv[2:])
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        if args.cancel_job:
+            return cancel_job(args.cancel_job)
+        models, errors = load_registry(check_files=True)
+        if args.list_models:
+            payload = {
+                "schema_version": SCHEMA_VERSION,
+                "models": [public_model(models[key]) for key in sorted(models)],
+                "warnings": errors,
+            }
+            print(json.dumps(payload, indent=2) if args.json else "\n".join(models))
+            return 0
+        if args.describe_model:
+            if args.describe_model not in models:
+                raise RegistryError(f"model is unavailable or unknown: {args.describe_model}")
+            payload = public_model(models[args.describe_model])
+            print(json.dumps(payload, indent=2) if args.json else json.dumps(payload["configuration"], indent=2))
+            return 0
+        if args.validate_registry:
+            payload = {"valid": not errors, "available_models": sorted(models), "errors": errors}
+            print(json.dumps(payload, indent=2))
+            return 0 if not errors else 1
+
+        if not args.model or not args.input or not args.output:
+            parser.error("--model, --input and --output are required for inference")
+        if args.model not in models:
+            raise RegistryError(f"model is unavailable or unknown: {args.model}")
+
+        model = models[args.model]
+        configuration = dict(model["configuration"])
+        if args.config_json:
+            custom = read_json_object(Path(args.config_json).expanduser(), "model configuration")
+            validate_configuration(custom, model["configuration_schema"], "configuration")
+            configuration.update(custom)
+            validate_configuration(configuration, model["configuration_schema"], "configuration")
+
+        input_path = Path(args.input).expanduser().resolve()
+        if not input_path.is_file():
+            raise RegistryError(f"input point cloud does not exist: {input_path}")
+        destination = output_path(args.output, input_path, model["output_suffix"]).resolve()
+        runner = model_root() / model["directory"] / model["runner"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            str(conda_path()), "run", "--no-capture-output", "--name", model["environment"],
+            "python", str(runner), "--input", str(input_path), "--output", str(destination),
+            *configuration_arguments(configuration),
+        ]
+        if not args.job_id:
+            return subprocess.run(command, cwd=runner.parent, check=False).returncode
+
+        pid_path = job_file(args.job_id)
+        cancel_path = pid_path.with_suffix(".cancel")
+        if cancel_path.exists():
+            cancel_path.unlink(missing_ok=True)
+            return 130
+        # The supervisor leads a new session so --cancel-job can signal the whole tree. It holds the
+        # read end of this pipe and stops the job if this launcher disappears without cleaning up.
+        read_fd, write_fd = os.pipe()
+        try:
+            process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), SUPERVISOR_FLAG, str(read_fd), args.job_id,
+                 "--", *command],
+                cwd=runner.parent, start_new_session=True, pass_fds=(read_fd,),
+            )
+        except BaseException:
+            os.close(write_fd)
+            raise
+        finally:
+            os.close(read_fd)
+        pid_path.write_text(str(process.pid), encoding="ascii")
+        try:
+            if cancel_path.exists():
+                os.killpg(process.pid, signal.SIGTERM)
+            return process.wait()
+        finally:
+            os.close(write_fd)
+            pid_path.unlink(missing_ok=True)
+            cancel_path.unlink(missing_ok=True)
+    except RegistryError as error:
+        if args.json:
+            print(json.dumps({"error": str(error)}), file=sys.stderr)
+        else:
+            print(f"smcp: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

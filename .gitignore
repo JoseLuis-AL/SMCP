@@ -30,6 +30,8 @@ CMakeLists.txt.user*
 *.obj
 *.o
 *.dmp
+__pycache__/
+*.py[cod]
 
 # --- Generated runtime data ---
 *.ini
@@ -55,3 +57,6 @@ Desktop.ini
 
 # --- Logs ---
 *.log
+
+# --- Distribution packages ---
+dist/

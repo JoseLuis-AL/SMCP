@@ -5,13 +5,19 @@
 #include <QApplication>
 #include <QCursor>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
 #include <QSignalBlocker>
+#include <QTemporaryDir>
 
 #include "export/IOExport.h"
+#include "ui/pointcloud_editor/AiInferenceProgressDialog.h"
+#include "ui/pointcloud_editor/AiModelConfigDialog.h"
+#include "ui/pointcloud_editor/ExportPointcloudDialog.h"
 #include "ui/pointcloud_editor/PlaneFitDialog.h"
 #include "ui/pointcloud_editor/RemoveOutliersDialog.h"
 #include "ui/pointcloud_editor/SphereFitDialog.h"
@@ -65,15 +71,38 @@ namespace
 		usedNames.insert(filename.toCaseFolded());
 		return filename;
 	}
+
+	QString EnsureXyzExtension(QString filename)
+	{
+		if (!filename.endsWith(".xyz", Qt::CaseInsensitive))
+		{
+			filename += ".xyz";
+		}
+		return filename;
+	}
 } // namespace
 
 /* Construction ============================================================================ */
+
+int PointcloudEditorDialog::Execute(const QString& rootDir, QWidget* parent)
+{
+	PointcloudEditorDialog dialog(rootDir, parent);
+	return dialog.exec();
+}
 
 PointcloudEditorDialog::PointcloudEditorDialog(const QString& rootDir, QWidget* parent, Qt::WindowFlags flags)
 	: QDialog(parent, flags), _rootDir(rootDir)
 {
 	setupUi(this);
+	_aiModelService = new WslModelService(this);
+	connect(_aiModelService, &WslModelService::OutputReceived, this, [this](const QString& text) {
+		const QStringList lines = text.split(QRegularExpression("[\\r\\n]+"), Qt::SkipEmptyParts);
+		if (lines.isEmpty()) return;
+		SetStatus(lines.back());
+		if (_aiProgressDialog) _aiProgressDialog->SetOutput(lines.back());
+	});
 	AddFitModels();
+	StartAiModelDiscovery();
 	UpdatePointcloudCombo();
 	SetStatus(QString());
 	showMaximized();
@@ -91,14 +120,256 @@ void PointcloudEditorDialog::AddFitModels()
 	fit_model_combo->addItem(tr("Sphere"), static_cast<int>(FitModel::Sphere));
 }
 
+/// Queries WSL for the registered models as soon as the editor opens. The selector stays
+/// disabled while searching and remains disabled when no model is available.
+void PointcloudEditorDialog::StartAiModelDiscovery()
+{
+	{
+		const QSignalBlocker blocker(ai_model_combo);
+		ai_model_combo->clear();
+		ai_model_combo->addItem(tr("Searching..."));
+	}
+	ai_model_combo->setEnabled(false);
+	ai_model_combo->setToolTip(tr("Searching for AI models in WSL..."));
+	_aiModelService->ListModels([this](const QVector<AiModelInfo>& models, const QString& error) {
+		SetAvailableAiModels(models, error);
+	});
+}
+
+void PointcloudEditorDialog::SetAvailableAiModels(const QVector<AiModelInfo>& models, const QString& error)
+{
+	{
+		const QSignalBlocker blocker(ai_model_combo);
+		_aiModels.clear();
+		ai_model_combo->clear();
+		ai_model_combo->addItem(tr("None"));
+		for (const AiModelInfo& model : models)
+		{
+			_aiModels.insert(model.id, model);
+			ai_model_combo->addItem(model.displayName, model.id);
+		}
+		ai_model_combo->setCurrentIndex(0);
+	}
+	UpdateAiModelControls();
+
+	if (models.isEmpty())
+	{
+		ai_model_combo->setToolTip(error.isEmpty()
+			? tr("No AI models were found in ~/smcp-models inside WSL.")
+			: tr("AI models are unavailable: %1").arg(error));
+	}
+	else
+	{
+		ai_model_combo->setToolTip(error.isEmpty()
+			? tr("Select an AI model to configure and run it on the first point cloud.")
+			: error);
+	}
+}
+
+void PointcloudEditorDialog::UpdateAiModelControls()
+{
+	ai_model_combo->setEnabled(!_busy && !_aiConfigurationLoading && !_aiModels.isEmpty());
+}
+
+void PointcloudEditorDialog::ResetAiModelSelection()
+{
+	const QSignalBlocker blocker(ai_model_combo);
+	ai_model_combo->setCurrentIndex(0);
+}
+
+void PointcloudEditorDialog::on_ai_model_combo_currentIndexChanged(int index)
+{
+	const QString modelId = index > 0 ? ai_model_combo->itemData(index).toString() : QString();
+	if (!modelId.isEmpty())
+	{
+		ConfigureAiModel(modelId);
+	}
+}
+
+void PointcloudEditorDialog::ConfigureAiModel(const QString& modelId)
+{
+	if (_busy || _aiConfigurationLoading || !_aiModels.contains(modelId))
+	{
+		ResetAiModelSelection();
+		return;
+	}
+	if (!FirstPointcloud())
+	{
+		SetStatus(tr("Load at least one point cloud before running an AI model."));
+		ResetAiModelSelection();
+		return;
+	}
+
+	_aiConfigurationLoading = true;
+	UpdateAiModelControls();
+	SetStatus(tr("Loading %1 configuration from WSL...").arg(_aiModels.value(modelId).displayName));
+	_aiModelService->DescribeModel(modelId, [this, modelId](const AiModelInfo& described, const QString& error) {
+		_aiConfigurationLoading = false;
+		UpdateAiModelControls();
+		if (!error.isEmpty())
+		{
+			SetStatus(tr("Could not load AI model configuration: %1").arg(error));
+			ResetAiModelSelection();
+			return;
+		}
+		if (described.id != modelId)
+		{
+			SetStatus(tr("WSL returned configuration for an unexpected AI model."));
+			ResetAiModelSelection();
+			return;
+		}
+
+		_aiModels.insert(modelId, described);
+		const QJsonObject configuration = _aiConfigurations.contains(modelId)
+			? _aiConfigurations.value(modelId) : described.configuration;
+		AiModelConfigDialog dialog(described.displayName, configuration, described.configurationSchema, this);
+		if (dialog.exec() != QDialog::Accepted)
+		{
+			SetStatus(tr("AI inference was not started."));
+			ResetAiModelSelection();
+			return;
+		}
+		_aiConfigurations.insert(modelId, dialog.Configuration());
+		StartAiInference(described, dialog.Configuration());
+		if (!_aiInferenceRunning)
+		{
+			// Preparing the temporary files failed; once running, CloseAiProgressDialog() resets it.
+			ResetAiModelSelection();
+		}
+	});
+}
+
+void PointcloudEditorDialog::StartAiInference(const AiModelInfo& model, const QJsonObject& configuration)
+{
+	const auto pointclouds = preview_widget->Pointclouds();
+	if (pointclouds.empty() || !pointclouds.front().cloud || pointclouds.front().cloud->empty())
+	{
+		SetStatus(tr("The first point cloud is empty."));
+		return;
+	}
+
+	_aiTemporaryDirectory = std::make_unique<QTemporaryDir>(
+		QDir::tempPath() + QDir::separator() + "smcp-ai-XXXXXX");
+	if (!_aiTemporaryDirectory->isValid())
+	{
+		_aiTemporaryDirectory.reset();
+		SetStatus(tr("Could not create temporary files for AI inference."));
+		return;
+	}
+
+	const QString inputPath = QDir(_aiTemporaryDirectory->path()).filePath("input.xyz");
+	_aiResultName = WslModelService::ResultFilename(pointclouds.front().name, model.outputSuffix);
+	_aiResultPath = QDir(_aiTemporaryDirectory->path()).filePath(_aiResultName);
+	const QString configurationPath = QDir(_aiTemporaryDirectory->path()).filePath("configuration.json");
+
+	if (!IOExport::WriteXyz(inputPath.toStdString(), *pointclouds.front().cloud))
+	{
+		_aiTemporaryDirectory.reset();
+		SetStatus(tr("Could not export the first point cloud for AI inference."));
+		return;
+	}
+	QFile configurationFile(configurationPath);
+	if (!configurationFile.open(QIODevice::WriteOnly | QIODevice::Truncate)
+		|| configurationFile.write(QJsonDocument(configuration).toJson(QJsonDocument::Indented)) < 0)
+	{
+		_aiTemporaryDirectory.reset();
+		SetStatus(tr("Could not write the temporary AI configuration."));
+		return;
+	}
+	configurationFile.close();
+
+	_aiInferenceRunning = true;
+	_aiCancelRequested = false;
+	SetBusy(true, false);
+	_aiProgressDialog = new AiInferenceProgressDialog(model.displayName, this);
+	connect(_aiProgressDialog, &AiInferenceProgressDialog::CancelRequested, this, [this]() {
+		if (!_aiInferenceRunning) return;
+		_aiCancelRequested = true;
+		_aiProgressDialog->SetCancelling();
+		SetStatus(tr("Cancelling AI inference..."));
+		_aiModelService->Cancel();
+	});
+	// Window-modal and non-blocking: the inference callbacks keep arriving through the event loop.
+	_aiProgressDialog->open();
+	SetStatus(tr("Running %1 on the first point cloud...").arg(model.displayName));
+	_aiModelService->RunInference(model.id, inputPath, _aiResultPath, configurationPath,
+		[this](bool success, const QString& diagnostics) { FinishAiInference(success, diagnostics); });
+}
+
+void PointcloudEditorDialog::FinishAiInference(bool success, const QString& diagnostics)
+{
+	_aiInferenceRunning = false;
+	if (!success)
+	{
+		_aiTemporaryDirectory.reset();
+		CloseAiProgressDialog();
+		SetBusy(false);
+		SetStatus(_aiCancelRequested ? tr("AI inference was cancelled.") : tr("AI inference failed: %1").arg(diagnostics));
+		return;
+	}
+	if (!QFileInfo::exists(_aiResultPath))
+	{
+		_aiTemporaryDirectory.reset();
+		CloseAiProgressDialog();
+		SetBusy(false);
+		SetStatus(tr("AI inference finished, but the expected output file was not created."));
+		return;
+	}
+	if (_aiProgressDialog) _aiProgressDialog->SetLoadingResult();
+	LoadAiResult();
+}
+
+void PointcloudEditorDialog::LoadAiResult()
+{
+	const QString path = _aiResultPath;
+	const QString name = _aiResultName;
+	RunAsync<std::shared_ptr<LoadedPointcloud>>(
+		tr("Loading AI inference result..."),
+		[path, name]() {
+			auto result = std::make_shared<LoadedPointcloud>();
+			result->cloud = std::make_shared<Pointcloud::ColorCloud>();
+			if (!IOExport::ReadXyz(path.toStdString(), *result->cloud) || result->cloud->empty())
+			{
+				result->cloud.reset();
+				return result;
+			}
+			result->prepared = PointcloudPreviewWidget::PreparePointcloud(*result->cloud, QColor(), name);
+			result->prepared.sourceCloud = result->cloud;
+			return result;
+		},
+		[this, name](const std::shared_ptr<LoadedPointcloud>& result) {
+			_aiTemporaryDirectory.reset();
+			CloseAiProgressDialog();
+			if (!result->cloud)
+			{
+				SetStatus(tr("The AI result could not be read as an XYZ point cloud."));
+				return;
+			}
+			preview_widget->AddPreparedPointcloud(std::move(result->prepared));
+			SetStatus(tr("AI result %1 added (%2 points).").arg(name).arg(result->cloud->size()));
+		});
+}
+
+void PointcloudEditorDialog::CloseAiProgressDialog()
+{
+	ResetAiModelSelection();
+	if (!_aiProgressDialog)
+	{
+		return;
+	}
+	_aiProgressDialog->done(QDialog::Accepted);
+	_aiProgressDialog->deleteLater();
+	_aiProgressDialog = nullptr;
+}
+
 void PointcloudEditorDialog::SetStatus(const QString& text)
 {
 	status_label->setText(text);
 }
 
-/// Disables the command bar and shows the wait cursor while a command runs in the
-/// background.
-void PointcloudEditorDialog::SetBusy(bool busy)
+/// Disables the command bar and, unless `waitCursor` is false, shows the wait cursor while a
+/// command runs in the background.
+void PointcloudEditorDialog::SetBusy(bool busy, bool waitCursor)
 {
 	if (_busy == busy)
 	{
@@ -106,28 +377,24 @@ void PointcloudEditorDialog::SetBusy(bool busy)
 	}
 	_busy = busy;
 
-	for (QWidget* w : { static_cast<QWidget*>(pointcloud_combo), static_cast<QWidget*>(refresh_button),
-			 static_cast<QWidget*>(remove_outliers_button), static_cast<QWidget*>(fit_model_combo),
-			 static_cast<QWidget*>(save_button), static_cast<QWidget*>(close_button) })
+	for (QWidget* w : { static_cast<QWidget*>(pointcloud_combo), static_cast<QWidget*>(load_pointcloud_button),
+			 static_cast<QWidget*>(remove_outliers_button),
+			 static_cast<QWidget*>(fit_model_combo), static_cast<QWidget*>(save_button) })
 	{
 		w->setEnabled(!busy);
 	}
+	UpdateAiModelControls();
 
-	if (busy)
+	if (busy && waitCursor)
 	{
 		QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
+		_waitCursor = true;
 	}
-	else
+	else if (!busy && _waitCursor)
 	{
 		QApplication::restoreOverrideCursor();
+		_waitCursor = false;
 	}
-}
-
-void PointcloudEditorDialog::ResetResult()
-{
-	_currentCloud.reset();
-	_originalCloud.reset();
-	preview_widget->ClearPointclouds();
 }
 
 /// The window close button does not interrupt a command already in progress.
@@ -146,13 +413,18 @@ void PointcloudEditorDialog::UpdatePointcloudCombo()
 {
 	const QDir dir(_rootDir);
 	const QStringList names = dir.entryList({ "*.xyz" }, QDir::Files, QDir::Name);
+	const QString selectedName = pointcloud_combo->currentText();
 
-	// Populate with signals blocked so clearing and each insertion do not reset or load anything;
-	// the selected file is loaded once at the end.
+	// Selecting a filename never loads it. Loading is explicit through load_pointcloud_button.
 	{
 		const QSignalBlocker blocker(pointcloud_combo);
 		pointcloud_combo->clear();
 		pointcloud_combo->addItems(names);
+		const int previousIndex = pointcloud_combo->findText(selectedName);
+		if (previousIndex >= 0)
+		{
+			pointcloud_combo->setCurrentIndex(previousIndex);
+		}
 	}
 
 	for (auto it = _cloudCache.begin(); it != _cloudCache.end();)
@@ -160,7 +432,6 @@ void PointcloudEditorDialog::UpdatePointcloudCombo()
 		it = names.contains(QFileInfo(it->first).fileName()) ? std::next(it) : _cloudCache.erase(it);
 	}
 
-	on_pointcloud_combo_currentIndexChanged(pointcloud_combo->currentIndex());
 }
 
 Pointcloud::ColorCloudPtr PointcloudEditorDialog::FindCachedPointcloud(const QString& path, qint64 fileSize,
@@ -207,15 +478,9 @@ void PointcloudEditorDialog::StoreCachedPointcloud(const QString& path, qint64 f
 	}
 }
 
-void PointcloudEditorDialog::on_refresh_button_clicked(bool)
+void PointcloudEditorDialog::on_load_pointcloud_button_clicked(bool)
 {
-	UpdatePointcloudCombo();
-}
-
-void PointcloudEditorDialog::on_pointcloud_combo_currentIndexChanged(int index)
-{
-	ResetResult();
-	if (index < 0 || pointcloud_combo->currentText().isEmpty())
+	if (pointcloud_combo->currentIndex() < 0 || pointcloud_combo->currentText().isEmpty())
 	{
 		return;
 	}
@@ -257,18 +522,23 @@ void PointcloudEditorDialog::on_pointcloud_combo_currentIndexChanged(int index)
 			{
 				StoreCachedPointcloud(path, fileSize, lastModified, result->cloud);
 			}
-			_currentCloud = result->cloud;
-			_originalCloud = result->cloud;
 			preview_widget->AddPreparedPointcloud(std::move(result->prepared));
-			SetStatus(tr("Point cloud loaded (%1 points).").arg(_currentCloud->size()));
+			SetStatus(tr("Point cloud added (%1 points).").arg(result->cloud->size()));
 		});
+}
+
+Pointcloud::ColorCloudPtr PointcloudEditorDialog::FirstPointcloud() const
+{
+	const auto pointclouds = preview_widget->Pointclouds();
+	return pointclouds.empty() ? nullptr : pointclouds.front().cloud;
 }
 
 /* Commands ================================================================================ */
 
 void PointcloudEditorDialog::on_remove_outliers_button_clicked(bool)
 {
-	if (!_currentCloud || _currentCloud->empty())
+	const Pointcloud::ColorCloudPtr input = FirstPointcloud();
+	if (!input || input->empty())
 	{
 		SetStatus(tr("No point cloud loaded."));
 		return;
@@ -281,7 +551,6 @@ void PointcloudEditorDialog::on_remove_outliers_button_clicked(bool)
 	}
 	_outlierRemovalParams = dialog.Params();
 
-	const Pointcloud::ColorCloudPtr input = _currentCloud;
 	const Pointcloud::OutlierRemovalParams params = _outlierRemovalParams;
 	RunAsync<Pointcloud::ColorCloudPtr>(
 		tr("Removing outliers..."),
@@ -290,13 +559,11 @@ void PointcloudEditorDialog::on_remove_outliers_button_clicked(bool)
 		},
 		[this, input](const Pointcloud::ColorCloudPtr& filtered) {
 			const auto removed = input->size() - filtered->size();
-			_currentCloud = filtered;
+			preview_widget->SetPointcloudColor(input, QColor("#e43b44"));
+			preview_widget->PrependPointcloud(filtered, QColor(), tr("Filtered"));
 
-			preview_widget->ClearPointclouds();
-			preview_widget->AddPointcloud(_currentCloud, QColor(), tr("Filtered"));
-			preview_widget->AddPointcloud(_originalCloud, QColor(Qt::red), tr("Original"));
-
-			SetStatus(tr("Outliers removed (%1 points discarded, %2 remaining).").arg(removed).arg(_currentCloud->size()));
+			SetStatus(tr("Outliers removed from the first cloud (%1 points discarded, %2 remaining).")
+				.arg(removed).arg(filtered->size()));
 		});
 }
 
@@ -313,7 +580,8 @@ void PointcloudEditorDialog::on_fit_model_combo_currentIndexChanged(int index)
 		return;
 	}
 
-	if (!_currentCloud || _currentCloud->empty())
+	const Pointcloud::ColorCloudPtr first = FirstPointcloud();
+	if (!first || first->empty())
 	{
 		SetStatus(tr("No point cloud loaded to fit a model to."));
 		ResetFitModelSelection();
@@ -354,7 +622,13 @@ void PointcloudEditorDialog::on_fit_model_combo_currentIndexChanged(int index)
 /// Extracts the dominant planes with RANSAC and displays them color-coded.
 void PointcloudEditorDialog::FitPlanes()
 {
-	const Pointcloud::ColorCloudPtr input = _currentCloud;
+	const Pointcloud::ColorCloudPtr input = FirstPointcloud();
+	if (!input || input->empty())
+	{
+		SetStatus(tr("No point cloud loaded to fit a model to."));
+		ResetFitModelSelection();
+		return;
+	}
 	const Pointcloud::PlaneFitParams params = _planeFitParams;
 	RunAsync<std::vector<Pointcloud::PlaneFit>>(
 		tr("Detecting planes..."),
@@ -362,8 +636,6 @@ void PointcloudEditorDialog::FitPlanes()
 			return Pointcloud::FitPlanes(*input, params);
 		},
 		[this](const std::vector<Pointcloud::PlaneFit>& planes) {
-			preview_widget->ClearPointclouds();
-
 			if (planes.empty())
 			{
 				SetStatus(tr("No planes could be estimated for the point cloud."));
@@ -371,15 +643,15 @@ void PointcloudEditorDialog::FitPlanes()
 				return;
 			}
 
-			auto merged = std::make_shared<Pointcloud::ColorCloud>();
+			preview_widget->SetAllPointcloudsVisible(false);
+			std::size_t pointCount = 0;
 			for (std::size_t i = 0; i < planes.size(); ++i)
 			{
-				merged->insert(merged->end(), planes[i].points->begin(), planes[i].points->end());
+				pointCount += planes[i].points->size();
 				preview_widget->AddPointcloud(planes[i].points, ColorAt(Plane_Colors, i), tr("Plane %1").arg(i + 1));
 			}
-
-			_currentCloud = merged;
-			SetStatus(tr("Detected %1 plane(s) with %2 points in total.").arg(planes.size()).arg(_currentCloud->size()));
+			SetStatus(tr("Detected %1 plane(s) in the first cloud with %2 points in total.")
+				.arg(planes.size()).arg(pointCount));
 			ResetFitModelSelection();
 		});
 }
@@ -389,7 +661,13 @@ void PointcloudEditorDialog::FitPlanes()
 /// RANSAC with 4 points to converge within a few thousand iterations.
 void PointcloudEditorDialog::FitSpheres()
 {
-	const Pointcloud::ColorCloudPtr input = _currentCloud;
+	const Pointcloud::ColorCloudPtr input = FirstPointcloud();
+	if (!input || input->empty())
+	{
+		SetStatus(tr("No point cloud loaded to fit a model to."));
+		ResetFitModelSelection();
+		return;
+	}
 	const Pointcloud::SphereFitParams selectedParams = _sphereFitParams;
 	RunAsync<std::vector<Pointcloud::SphereFit>>(
 		tr("Detecting spheres..."),
@@ -409,8 +687,6 @@ void PointcloudEditorDialog::FitSpheres()
 			return Pointcloud::FitSpheres(*remaining, params);
 		},
 		[this](const std::vector<Pointcloud::SphereFit>& spheres) {
-			preview_widget->ClearPointclouds();
-
 			if (spheres.empty())
 			{
 				SetStatus(tr("No spheres could be estimated for the point cloud."));
@@ -418,12 +694,13 @@ void PointcloudEditorDialog::FitSpheres()
 				return;
 			}
 
-			auto merged = std::make_shared<Pointcloud::ColorCloud>();
+			preview_widget->SetAllPointcloudsVisible(false);
+			std::size_t pointCount = 0;
 			QStringList details;
 			for (std::size_t i = 0; i < spheres.size(); ++i)
 			{
 				const auto& sphere = spheres[i];
-				merged->insert(merged->end(), sphere.points->begin(), sphere.points->end());
+				pointCount += sphere.points->size();
 				preview_widget->AddPointcloud(sphere.points, ColorAt(Sphere_Colors, i), tr("Sphere %1").arg(i + 1));
 				details << tr("sphere %1: center=(%2, %3, %4) radius=%5 (%6 points)")
 					.arg(i + 1)
@@ -433,11 +710,9 @@ void PointcloudEditorDialog::FitSpheres()
 					.arg(sphere.model.radius, 0, 'f', 3)
 					.arg(sphere.points->size());
 			}
-
-			_currentCloud = merged;
-			SetStatus(tr("Detected %1 sphere(s) with %2 points in total: %3")
+			SetStatus(tr("Detected %1 sphere(s) in the first cloud with %2 points in total: %3")
 				.arg(spheres.size())
-				.arg(_currentCloud->size())
+				.arg(pointCount)
 				.arg(details.join("; ")));
 			ResetFitModelSelection();
 		});
@@ -452,34 +727,94 @@ void PointcloudEditorDialog::on_save_button_clicked(bool)
 		return;
 	}
 
-	const QString directory = QFileDialog::getExistingDirectory(this, tr("Export point clouds"), _rootDir);
-	if (directory.isEmpty())
+	ExportPointcloudDialog dialog(this);
+	if (dialog.exec() != QDialog::Accepted)
 	{
 		return;
 	}
 
-	SetStatus(tr("Exporting..."));
-	QSet<QString> usedNames;
-	for (int i = 0; i < static_cast<int>(pointclouds.size()); ++i)
+	switch (dialog.SelectedMode())
 	{
-		const QString filename = ExportFilename(pointclouds[i].name, i, usedNames);
-		if (!IOExport::WriteXyz(QDir(directory).filePath(filename).toStdString(), *pointclouds[i].cloud))
+	case ExportPointcloudDialog::Mode::First:
+	{
+		QSet<QString> usedNames;
+		const QString suggested = QDir(_rootDir).filePath(ExportFilename(pointclouds.front().name, 0, usedNames));
+		QString filename = QFileDialog::getSaveFileName(this, tr("Export first point cloud"), suggested,
+			tr("XYZ point cloud (*.xyz)"));
+		if (filename.isEmpty())
 		{
-			SetStatus(tr("Error: not all point clouds could be exported."));
 			return;
 		}
+		filename = EnsureXyzExtension(filename);
+		SetStatus(tr("Exporting first point cloud..."));
+		if (!IOExport::WriteXyz(filename.toStdString(), *pointclouds.front().cloud))
+		{
+			SetStatus(tr("Error: the first point cloud could not be exported."));
+			return;
+		}
+		SetStatus(tr("Exported the first point cloud to %1.").arg(QDir::toNativeSeparators(filename)));
+		break;
 	}
-	SetStatus(tr("Exported %1 point cloud(s) to %2.").arg(pointclouds.size()).arg(QDir::toNativeSeparators(directory)));
-}
-
-void PointcloudEditorDialog::on_close_button_clicked(bool)
-{
-	if (_busy)
+	case ExportPointcloudDialog::Mode::Multiple:
 	{
-		return;
+		const QString directory = QFileDialog::getExistingDirectory(this, tr("Export point clouds"), _rootDir);
+		if (directory.isEmpty())
+		{
+			return;
+		}
+
+		SetStatus(tr("Exporting point clouds..."));
+		QSet<QString> usedNames;
+		for (int i = 0; i < static_cast<int>(pointclouds.size()); ++i)
+		{
+			const QString filename = ExportFilename(pointclouds[i].name, i, usedNames);
+			if (!IOExport::WriteXyz(QDir(directory).filePath(filename).toStdString(), *pointclouds[i].cloud))
+			{
+				SetStatus(tr("Error: not all point clouds could be exported."));
+				return;
+			}
+		}
+		SetStatus(tr("Exported %1 point cloud(s) to %2.")
+			.arg(pointclouds.size()).arg(QDir::toNativeSeparators(directory)));
+		break;
 	}
-	ResetResult();
-	accept();
+	case ExportPointcloudDialog::Mode::Combine:
+	{
+		auto combined = std::make_shared<Pointcloud::ColorCloud>();
+		int visibleCount = 0;
+		for (const auto& pointcloud : pointclouds)
+		{
+			if (!pointcloud.visible)
+			{
+				continue;
+			}
+			combined->insert(combined->end(), pointcloud.cloud->begin(), pointcloud.cloud->end());
+			++visibleCount;
+		}
+		if (visibleCount == 0)
+		{
+			SetStatus(tr("No visible point clouds to combine."));
+			return;
+		}
+
+		QString filename = QFileDialog::getSaveFileName(this, tr("Export combined point cloud"),
+			QDir(_rootDir).filePath("combined.xyz"), tr("XYZ point cloud (*.xyz)"));
+		if (filename.isEmpty())
+		{
+			return;
+		}
+		filename = EnsureXyzExtension(filename);
+		SetStatus(tr("Combining and exporting visible point clouds..."));
+		if (!IOExport::WriteXyz(filename.toStdString(), *combined))
+		{
+			SetStatus(tr("Error: the combined point cloud could not be exported."));
+			return;
+		}
+		SetStatus(tr("Combined %1 visible cloud(s) and exported %2 points to %3.")
+			.arg(visibleCount).arg(combined->size()).arg(QDir::toNativeSeparators(filename)));
+		break;
+	}
+	}
 }
 
 } // namespace smcp

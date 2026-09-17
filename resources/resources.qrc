@@ -12,14 +12,14 @@
     <file alias="icon-3d.svg">icons/icon-3d.svg</file>
     <file alias="icon-projector.svg">icons/icon-projector.svg</file>
     <file alias="unison.png">icons/logo_unison.png</file>
-    <file alias="resfresh-icon.svg">icons/resfresh-icon.svg</file>
     <file alias="pointcloud-editor-icon.svg">icons/pointcloud-editor-icon.svg</file>
     <file alias="remove-outlier-command-icon.svg">icons/remove-outlier-command-icon.svg</file>
     <file alias="icon-save.svg">icons/icon-save.svg</file>
-    <file alias="icon-close.svg">icons/icon-close.svg</file>
     <file alias="eye-icon.svg">icons/eye-icon.svg</file>
     <file alias="eye-closed-close.svg">icons/eye-closed-close.svg</file>
     <file alias="trash-icon.svg">icons/trash-icon.svg</file>
+    <file alias="load-pointcloud-icon.svg">icons/load-pointcloud-icon.svg</file>
+    <file alias="first-pointcloud-icon.svg">icons/first-pointcloud-icon.svg</file>
     <file>theme/smcp.qss</file>
   </qresource>
 </RCC>

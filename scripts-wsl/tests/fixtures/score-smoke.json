@@ -1,0 +1,6 @@
+{
+  "device": "auto",
+  "ld_num_steps": 1,
+  "ld_step_size": 0.05,
+  "denoise_knn": 4
+}

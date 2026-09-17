@@ -81,7 +81,7 @@ void ProjectorWidget::Start(void)
         _screen = screens;
     }
 
-    //display (QScreen sustituye a QDesktopWidget, obsoleto en Qt 5.14)
+    //display (QScreen replaces QDesktopWidget, which is obsolete in Qt 5.14)
     QRect screenResolution = (_screen < screens)
         ? screenList[_screen]->geometry()
         : QGuiApplication::primaryScreen()->geometry();

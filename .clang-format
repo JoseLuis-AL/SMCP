@@ -1,5 +1,5 @@
-# Estilo dominante del codigo: tabuladores, llaves Allman, punteros a la izquierda.
-# Coherente con .editorconfig (tab = 4). No reformatear archivos enteros sin motivo.
+# Prevailing code style: tabs, Allman braces, and left-aligned pointers.
+# Consistent with .editorconfig (tab = 4). Do not reformat whole files without a reason.
 ---
 Language: Cpp
 BasedOnStyle: LLVM

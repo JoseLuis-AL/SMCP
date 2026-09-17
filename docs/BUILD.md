@@ -31,6 +31,7 @@ cloud editing remain available.
 | Qt | 5.14.2, `msvc2017_64` kit | Core, Gui, Widgets, OpenGL, and Concurrent |
 | OpenCV | 2.4.13.6 Windows package | `build/x64/vc14`, including core, imgproc, highgui, calib3d, features2d, and flann |
 | Spinnaker SDK | 3.x or 4.x | Optional; required only for direct FLIR/Teledyne capture |
+| WSL 2 + Ubuntu | 22.04.5 | Optional; required only for the AI models. See [WSL models quick start](WSL_MODELS_QUICKSTART.md) |
 
 The older Qt and OpenCV binaries are ABI-compatible with the supported MSVC toolsets in
 this project configuration. The build is intentionally Windows/MSVC-only.
@@ -179,23 +180,61 @@ For a stronger check, force a clean rebuild:
 Then launch the executable and confirm that the main window opens. A camera is not needed
 for this smoke test.
 
-## Distributing a Release build
-
-Build the Release configuration:
+The C++ tests are registered with CTest and built with the application. Run them from a
+Developer PowerShell, where `ctest` is available:
 
 ```powershell
-.\scripts\build.ps1 -Config Release -Clean
+ctest --test-dir build/ninja-debug --output-on-failure
 ```
 
-Distribute the complete `build/ninja-release/bin` directory. Do not copy `SMCP.exe`
-alone: the adjacent Qt plugins and DLLs are part of the application package.
+`SMCP_ai_tests` also contains an opt-in integration test for configured machines. It discovers
+the installed models in WSL and, when an input cloud and a configuration are supplied, runs
+Score Denoise on them:
+
+```powershell
+$env:SMCP_TEST_WSL = "1"
+$env:SMCP_TEST_INPUT = "$PWD\scripts-wsl\tests\fixtures\small-cloud.xyz"
+$env:SMCP_TEST_CONFIG = "$PWD\scripts-wsl\tests\fixtures\score-smoke.json"
+ctest --test-dir build/ninja-debug --output-on-failure
+```
+
+The WSL launcher tests run inside Ubuntu from the repository root:
+
+```bash
+python3 -m unittest discover -s scripts-wsl/tests -p "test_*.py"
+```
+
+## Distributing a Release build
+
+Build and package the Release configuration:
+
+```powershell
+.\scripts\package-release.ps1
+```
+
+The helper runs `build.ps1 -Config Release`, stages `build/ninja-release/bin`, and adds the
+Visual C++ runtime DLLs, `LICENSE.txt`, `READ_ME_FIRST.txt`, `README.md`, and the complete
+`docs` directory, so the relative links in the documentation keep working. It writes
+`dist/SMCP-<version>-win64.zip` together with its SHA256 file. Test executables such as
+`SMCP_ai_tests.exe` are removed from the package, and the script stops if any other test file
+remains. The `scripts-wsl` directory is not packaged: users who want the optional AI models
+follow the [WSL models quick start](WSL_MODELS_QUICKSTART.md) with the source repository.
+The version comes from
+`CMakeLists.txt`; `-SkipBuild` reuses the current Release output and `-Version` overrides
+the archive name. Upload that archive as the GitHub release asset.
+
+To distribute manually instead, copy the complete `build/ninja-release/bin` directory. Do
+not copy `SMCP.exe` alone: the adjacent Qt plugins and DLLs are part of the application
+package.
 
 The target Windows computer does not need Qt, OpenCV, Spinnaker development files, CMake,
 Ninja, or Visual Studio. It does need:
 
 - the Microsoft Visual C++ x64 Redistributable compatible with the toolset used to build
-  SMCP; and
-- compatible FLIR/Teledyne drivers when direct camera capture is required.
+  SMCP, unless the runtime DLLs travel next to `SMCP.exe` as `package-release.ps1` copies
+  them;
+- compatible FLIR/Teledyne drivers when direct camera capture is required; and
+- WSL 2 with the Ubuntu 22.04 setup from the quick start only when the AI models are used.
 
 Build with `SMCP_WITH_SPINNAKER=OFF` when the distributed application only needs existing
 captures and point clouds. This removes the Spinnaker runtime dependency and disables
@@ -219,6 +258,22 @@ Qt 5.14.2 `msvc2017_64` kit and regenerate the user presets.
 Either set `SPINNAKER_DIR` to a root containing `include`, `lib64`, and `bin64`, or build
 with `SMCP_WITH_SPINNAKER=OFF`. `FindSpinnaker.cmake` supports the `Spinnaker_v141` and
 `Spinnaker_v140` library layouts.
+
+### Header changes do not rebuild, or Debug reports heap corruption
+
+Ninja rebuilds a source file after a header changes only if it recognizes the compiler's
+`/showIncludes` lines. A Visual Studio installed in Spanish or another language prints that
+prefix with accented characters in the console code page, and CMake stores it with a different
+encoding. Ninja then records no header dependencies: editing a header leaves stale objects
+with different class layouts, which in Debug typically ends with *HEAP CORRUPTION DETECTED*
+when a dialog is destroyed.
+
+`cmake/MsvcShowIncludesPrefix.cmake` detects the real prefix from `cl.exe` and corrects it
+during configuration, printing `Corrected the cl.exe /showIncludes prefix` when it applies.
+Build directories configured before this fix may still contain stale objects, so rebuild them
+once with `-Clean`. To check that dependencies are tracked, run
+`ninja -C build/ninja-debug -t deps` and confirm that objects list their headers instead of
+`#deps 0`.
 
 ### `cl.exe`, CMake, or Ninja is not in `PATH`
 

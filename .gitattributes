@@ -1,7 +1,7 @@
-# Normaliza finales de línea: LF en el repositorio, LF en disco.
+# Normalize line endings: LF in the repository and in working copies.
 * text=auto eol=lf
 
-# Fuentes C++ y archivos de Qt son texto.
+# C++ sources and Qt files are text.
 *.cpp text
 *.h   text
 *.hpp text
@@ -10,16 +10,16 @@
 *.qss text
 *.svg text
 
-# Archivos de Visual Studio conservan CRLF (si alguna vez se generan y versionan).
+# Visual Studio files keep CRLF if they are ever generated and committed.
 *.sln      text eol=crlf
 *.vcxproj  text eol=crlf
 *.vcxproj.filters text eol=crlf
 
-# Scripts de Windows.
+# Windows scripts.
 *.ps1 text eol=crlf
 *.bat text eol=crlf
 
-# Binarios.
+# Binary files.
 *.png  binary
 *.ico  binary
 *.icns binary

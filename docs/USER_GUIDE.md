@@ -152,23 +152,38 @@ loosening reconstruction thresholds; recapture problematic calibration poses ins
 
 ## Point Cloud Editor
 
-Click **Point Cloud** to open the editor. Its source selector lists `.xyz` files located
-directly in the current workspace. Click **Refresh** after adding files externally.
+Click **Point Cloud** to open the editor. The **Point Cloud** selector lists the `.xyz` files
+located directly in the current workspace. The list is read when the editor opens; close and
+reopen the editor to see files added or exported to the workspace afterward.
 
-Loading and processing run in background workers. The command bar is temporarily disabled
-while an operation is active.
+Select a file and click **Load** to add it to the overlay in the top-right corner of the
+viewer. Load several files, or the same file more than once, to compare them. Parsed files
+are cached while the editor is open, so loading a large cloud again is fast.
+
+### The first point cloud
+
+Every command works on the **first point cloud**: the top row of the overlay, marked with an
+arrow icon. Drag rows to change which cloud is first and the order in which clouds are drawn.
+Commands never modify a cloud in place; their results are added as new rows.
+
+Loading and processing run in background workers. The command bar is disabled and the wait
+cursor is shown while an operation is active; AI inference shows its own progress window
+instead. The window close button does not interrupt an operation in progress.
 
 ### Remove outliers
 
-1. Load a cloud.
+1. Make the cloud to filter the first cloud.
 2. Click **Remove Outliers**.
 3. Set **Neighbors (k)** and **Standard deviation multiplier**.
 4. Click **Done** to run or **Cancel** to leave the cloud unchanged.
 
 The operation removes points whose mean neighbor distance is above the global mean plus the
 chosen number of standard deviations. A smaller multiplier removes more points; a larger
-neighbor count smooths the density estimate but costs more processing time. The result and
-original cloud are both shown for comparison.
+neighbor count smooths the density estimate but costs more processing time.
+
+The filtered result is inserted at the top of the overlay as **Filtered**, so it becomes the
+first cloud and the next command works on it. The input cloud stays in the list, recolored
+red, which makes the removed points easy to see behind the result.
 
 ### Fit planes or spheres
 
@@ -181,25 +196,79 @@ Select **Plane** or **Sphere** from **Fit Figure**. Selecting **None** does noth
 - **Done** starts the fit; **Cancel** makes no change. The selector returns to **None** in
   either case.
 
-Each detected model becomes a separate colored cloud in the overlay. Sphere fitting first
-removes dominant planes internally so planar backgrounds are less likely to overwhelm the
-sphere search.
+The fit uses the first cloud. When it finds models, every existing row is hidden and each
+detected model is added as a separate colored cloud (**Plane 1**, **Sphere 1**, ...). Use the
+eye buttons to show the original clouds again. Sphere fitting first removes dominant planes
+internally so planar backgrounds are less likely to overwhelm the sphere search; the status
+bar reports each sphere's center, radius, and point count.
 
-### Manage and export editor results
+### Run an AI model
 
-Each overlay row shows a color marker, editable name, point count, visibility button, and
-delete button.
+AI models are optional. They run in Ubuntu 22.04 under WSL and require the setup described
+in [WSL models quick start](WSL_MODELS_QUICKSTART.md). Users who do not need them can ignore
+the **AI Model** selector; the rest of the editor works the same without WSL.
 
-- Double-click the name to edit it; press Enter or click elsewhere to finish.
-- Click the eye button to hide or show a cloud. Visibility affects only the preview.
-- Click the trash button to remove the cloud from the editor.
-- Drag rows to change draw order.
-- Click **Export**, choose a directory, and SMCP writes one XYZ file for every row that is
-  still present. Edited names become filenames. Hidden clouds are included; deleted clouds
-  are not.
+When the editor opens, SMCP searches the validated `~/smcp-models/models.json` registry in
+WSL. The selector shows **Searching...** and stays disabled until the search finishes, which
+can take a few seconds while WSL starts. If no model is found, or WSL is unavailable, the
+selector remains disabled and its tooltip explains why. Close and reopen the editor to search
+again, for example after finishing the WSL setup.
 
-SMCP replaces characters that Windows does not allow in filenames and appends a number to
-duplicates, preventing one exported cloud from overwriting another.
+1. Make the input cloud the first cloud.
+2. Select `Score Denoise`, `StraightPCF`, or `PointCleanNet` from **AI Model**.
+3. Edit the JSON configuration. The dialog checks parameter names, types, enumerated values,
+   and ranges while you type, and **OK** is available only for a valid configuration.
+4. Click **OK** to start inference. The **Running AI Model** window shows *Thinking...*,
+   the elapsed time, and the latest message reported by the model, and blocks the editor
+   until the model finishes.
+5. When inference finishes, the result is added to the overlay with the registered suffix,
+   for example `example_piece_score_denoise.xyz`.
+
+The selector returns to **None** after the model finishes, fails, or is cancelled, and when
+the configuration dialog is cancelled, so selecting a model always opens its configuration.
+
+Click **Cancel** in the **Running AI Model** window, or close that window, to stop the model.
+The model process in WSL is terminated and its partial result is discarded. Escape does not
+cancel, to avoid stopping a long run by accident.
+
+Accepted settings are remembered per model while the editor remains open: select the same
+model again to run it with the previous parameters or change them. Common tuning parameters
+include `ld_num_steps` and `cluster_size` for Score Denoise, `niters`,
+`patch_size`, and `cluster_size` for StraightPCF, and `iterations`, `cell_size`,
+`batch_size`, and `smoothing_neighbors` for PointCleanNet. Some models reject very small
+clouds; PointCleanNet, for example, needs enough points to fill its processing cells.
+
+### Manage editor results
+
+Each overlay row shows, from left to right:
+
+- the first-cloud arrow, only on the top row;
+- a color swatch. Click it to paint the whole cloud with a preset or `RRGGBB` color, or
+  choose **None** to use the colors stored in each point;
+- the row number and an editable name. Double-click the name to edit it; press Enter or
+  click elsewhere to finish;
+- the point count;
+- an eye button to hide or show the cloud. Visibility affects the preview and combined
+  export; and
+- a trash button to remove the cloud from the editor.
+
+Drag rows to change the first cloud and the draw order.
+
+### Export point clouds
+
+Click **Export** and choose what to write:
+
+| Option | Result |
+|---|---|
+| **First point cloud only** | Asks for one `.xyz` filename and writes the first cloud |
+| **Each point cloud as a separate file** | Asks for a directory and writes one `.xyz` file per row, hidden rows included |
+| **All visible point clouds combined into one file** | Asks for one filename and writes every visible cloud merged into a single cloud |
+
+Edited row names become filenames: the first cloud's name is suggested in the save dialog,
+and separate files are named after their rows. SMCP replaces characters that Windows does not
+allow in filenames and, for separate files, appends a number to duplicate names so one
+exported cloud never overwrites another. The combined file is suggested as `combined.xyz`.
+Removed rows are never exported.
 
 ## File formats
 
@@ -237,8 +306,22 @@ distributed across the field of view and depth range.
 
 ### Point-cloud editor shows no files
 
-It scans only `.xyz` files in the workspace root, not PLY files or nested directories. Move
-or export the desired XYZ file there, then click **Refresh**.
+It scans only `.xyz` files in the workspace root, not PLY files or nested directories, and
+only when the editor opens. Move or export the desired XYZ file there, then close and reopen
+the editor.
+
+### The AI Model selector finds no models
+
+The selector stays disabled; hover over it to read the reason. Confirm that Ubuntu 22.04 is
+installed in WSL, that `bash scripts-wsl/verify.sh --strict` succeeds inside it, and that
+`smcp --list-models --json` lists the models. Then close and reopen the editor to search
+again. See [WSL models quick start](WSL_MODELS_QUICKSTART.md) for setup and troubleshooting.
+
+### An AI model fails
+
+The status bar shows the model's error message. Select the model again to adjust its
+parameters; for example, lower PointCleanNet's `min_points_cell` or increase
+its `cell_size` for small clouds.
 
 For implementation details and extension points, continue with
 [ARCHITECTURE.md](ARCHITECTURE.md).

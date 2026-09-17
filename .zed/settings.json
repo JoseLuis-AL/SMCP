@@ -1,6 +1,6 @@
 {
-  // Configuracion del proyecto para Zed. Requiere haber configurado antes
-  // el preset ninja-debug (genera build/ninja-debug/compile_commands.json).
+  // Zed project settings. Configure the ninja-debug preset first
+  // (it generates build/ninja-debug/compile_commands.json).
   "languages": {
     "C++": {
       "tab_size": 4,

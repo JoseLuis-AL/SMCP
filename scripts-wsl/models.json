@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "id": "score-denoise",
+      "display_name": "Score Denoise",
+      "enabled": true,
+      "environment": "model-score-denoise",
+      "directory": "score-denoise",
+      "runner": "run_score_denoise.py",
+      "output_suffix": "score_denoise",
+      "required_files": ["model/pretrained/ckpt.pt"],
+      "configuration": {
+        "device": "auto", "seed": 2020, "large_threshold": 20000,
+        "cluster_size": 10000, "ld_step_size": 0.2, "ld_num_steps": 30,
+        "step_decay": 0.95, "denoise_knn": 4
+      },
+      "configuration_schema": {
+        "device": {"type": "string", "enum": ["auto", "cuda", "cpu"]},
+        "seed": {"type": "integer", "minimum": 0},
+        "large_threshold": {"type": "integer", "minimum": 17},
+        "cluster_size": {"type": "integer", "minimum": 17},
+        "ld_step_size": {"type": "number", "exclusive_minimum": 0},
+        "ld_num_steps": {"type": "integer", "minimum": 1},
+        "step_decay": {"type": "number", "exclusive_minimum": 0, "maximum": 1},
+        "denoise_knn": {"type": "integer", "minimum": 1}
+      }
+    },
+    {
+      "id": "straightPCF",
+      "display_name": "StraightPCF",
+      "enabled": true,
+      "environment": "model-straightPCF",
+      "directory": "straightPCF",
+      "runner": "run_straightpcf.py",
+      "output_suffix": "straightPCF",
+      "required_files": [
+        "model/pretrained_straightpcf/ckpt_straightpcf.pt",
+        "model/pretrained_cvm/ckpt_cvm.pt"
+      ],
+      "configuration": {
+        "device": "auto", "niters": 2, "seed_k": 6, "seed_k_alpha": 1,
+        "patch_size": 1000, "large_threshold": 20000,
+        "cluster_size": 10000, "seed": 2020
+      },
+      "configuration_schema": {
+        "device": {"type": "string", "enum": ["auto", "cuda", "cpu"]},
+        "niters": {"type": "integer", "minimum": 1},
+        "seed_k": {"type": "integer", "minimum": 1},
+        "seed_k_alpha": {"type": "integer", "minimum": 1},
+        "patch_size": {"type": "integer", "minimum": 33},
+        "large_threshold": {"type": "integer", "minimum": 33},
+        "cluster_size": {"type": "integer", "minimum": 33},
+        "seed": {"type": "integer", "minimum": 0}
+      }
+    },
+    {
+      "id": "pointcleannet",
+      "display_name": "PointCleanNet",
+      "enabled": true,
+      "environment": "pointcleannet",
+      "directory": "pointcleannet",
+      "runner": "run_pointcleannet.py",
+      "output_suffix": "pointcleannet",
+      "required_files": [
+        "model/models/PointCleanNet_params.pth",
+        "model/models/PointCleanNet_model.pth"
+      ],
+      "configuration": {
+        "device": "auto", "iterations": 2, "cell_size": 0.0,
+        "target_points_cell": 2000, "min_points_cell": 200,
+        "overlap": 0.15, "batch_size": 128,
+        "smoothing_neighbors": 100, "seed": 2020
+      },
+      "configuration_schema": {
+        "device": {"type": "string", "enum": ["auto", "cuda", "cpu"]},
+        "iterations": {"type": "integer", "minimum": 1},
+        "cell_size": {"type": "number", "minimum": 0},
+        "target_points_cell": {"type": "integer", "minimum": 3},
+        "min_points_cell": {"type": "integer", "minimum": 3},
+        "overlap": {"type": "number", "minimum": 0, "exclusive_maximum": 1},
+        "batch_size": {"type": "integer", "minimum": 1},
+        "smoothing_neighbors": {"type": "integer", "minimum": 1},
+        "seed": {"type": "integer", "minimum": 0}
+      }
+    }
+  ]
+}

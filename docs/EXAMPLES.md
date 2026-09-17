@@ -60,9 +60,10 @@ Because the XYZ files are in the workspace root, the editor lists them automatic
   useful validation target.
 - `example_sphere_bar.xyz`: sphere fitting with the default parameters.
 
-These clouds can also validate row visibility, deletion, editable names, draw order, and
-multi-cloud export. Click **Refresh** in the editor if files were added after the dialog
-was opened.
+Select a file and click **Load** to add it to the overlay; commands work on the first row.
+These clouds can also validate row visibility, color changes, deletion, editable names, draw
+order, and the three export modes. The editor reads the file list when it opens, so close and
+reopen it if files were added to the workspace afterward.
 
 ## Keeping source and data separate
 

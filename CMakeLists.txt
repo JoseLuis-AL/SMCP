@@ -1,18 +1,23 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(SMCP
-    VERSION 2.0.0
-    DESCRIPTION "Escaner 3D por luz estructurada (calibracion proyector-camara)"
+    VERSION 3.0.2
+    DESCRIPTION "Structured-light 3D scanner with projector-camera calibration"
     LANGUAGES CXX)
 
-# ---------------------------------------------------------------------------
-# Opciones
-# ---------------------------------------------------------------------------
-option(SMCP_WITH_SPINNAKER "Compilar la captura con camaras FLIR/Teledyne (SDK Spinnaker)" ON)
-option(SMCP_DEPLOY_RUNTIME "Copiar las DLL de Qt, OpenCV y Spinnaker junto al ejecutable tras compilar" ON)
+# With a localized cl.exe, Ninja would otherwise record no header dependencies.
+include("${CMAKE_SOURCE_DIR}/cmake/MsvcShowIncludesPrefix.cmake")
+
+include(CTest)
 
 # ---------------------------------------------------------------------------
-# Configuracion global
+# Options
+# ---------------------------------------------------------------------------
+option(SMCP_WITH_SPINNAKER "Build capture support for FLIR/Teledyne cameras (Spinnaker SDK)" ON)
+option(SMCP_DEPLOY_RUNTIME "Copy the Qt, OpenCV, and Spinnaker DLLs next to the executable after building" ON)
+
+# ---------------------------------------------------------------------------
+# Global settings
 # ---------------------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,10 +31,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Tipo de build" FORCE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
 
-# Todo (Debug y Release, Ninja o Visual Studio) sale a build/<preset>/bin.
+# Every configuration (Debug or Release, Ninja or Visual Studio) outputs to build/<preset>/bin.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
     string(TOUPPER "${_cfg}" _CFG)
@@ -37,25 +42,25 @@ foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
 endforeach()
 
 if(NOT MSVC)
-    message(FATAL_ERROR "SMCP solo se compila con MSVC (Visual Studio 2022/2026, toolset x64).")
+    message(FATAL_ERROR "SMCP can only be built with MSVC (Visual Studio 2022/2026, x64 toolset).")
 endif()
 
 # ---------------------------------------------------------------------------
-# Dependencias
+# Dependencies
 # ---------------------------------------------------------------------------
 
-# Qt 5: se acepta Qt5_DIR apuntando al kit (.../msvc2017_64) o a lib/cmake/Qt5.
+# Qt 5: Qt5_DIR may point to the kit root (.../msvc2017_64) or to lib/cmake/Qt5.
 if(DEFINED Qt5_DIR AND NOT EXISTS "${Qt5_DIR}/Qt5Config.cmake"
         AND EXISTS "${Qt5_DIR}/lib/cmake/Qt5/Qt5Config.cmake")
-    set(Qt5_DIR "${Qt5_DIR}/lib/cmake/Qt5" CACHE PATH "Directorio lib/cmake/Qt5 del kit de Qt" FORCE)
+    set(Qt5_DIR "${Qt5_DIR}/lib/cmake/Qt5" CACHE PATH "lib/cmake/Qt5 directory of the Qt kit" FORCE)
 endif()
 find_package(Qt5 5.14 REQUIRED COMPONENTS Core Gui Widgets OpenGL Concurrent)
 get_target_property(_qmake_location Qt5::qmake IMPORTED_LOCATION)
 get_filename_component(SMCP_QT_BIN_DIR "${_qmake_location}" DIRECTORY)
 message(STATUS "Qt ${Qt5_VERSION}: ${SMCP_QT_BIN_DIR}")
 
-# OpenCV 2.4: su OpenCVConfig.cmake no reconoce toolsets posteriores a vc15,
-# asi que se fija el binario x64/vc14 (compatible con v141..v145).
+# OpenCV 2.4: its OpenCVConfig.cmake does not recognize toolsets newer than vc15,
+# so the x64/vc14 binaries are selected (compatible with v141..v145).
 if(NOT DEFINED OpenCV_ARCH)
     set(OpenCV_ARCH x64)
 endif()
@@ -65,7 +70,7 @@ endif()
 find_package(OpenCV 2.4 REQUIRED COMPONENTS core imgproc highgui calib3d features2d flann)
 message(STATUS "OpenCV ${OpenCV_VERSION}: ${OpenCV_LIB_PATH}")
 
-# Spinnaker (opcional).
+# Spinnaker (optional).
 if(SMCP_WITH_SPINNAKER)
     find_package(Spinnaker REQUIRED)
     message(STATUS "Spinnaker: ${Spinnaker_LIBRARY_RELEASE}")
@@ -74,7 +79,7 @@ endif()
 find_package(OpenGL REQUIRED)
 
 # ---------------------------------------------------------------------------
-# Fuentes (listas explicitas por subdirectorio, sin GLOB)
+# Sources (explicit lists per subdirectory, no GLOB)
 # ---------------------------------------------------------------------------
 set(SMCP_SOURCES_APP
     src/app/main.cpp
@@ -94,6 +99,14 @@ set(SMCP_SOURCES_UI
     src/ui/CalibrationDialog.ui
     src/ui/models/TreeModel.cpp
     src/ui/models/TreeModel.h
+    src/ui/pointcloud_editor/AiInferenceProgressDialog.cpp
+    src/ui/pointcloud_editor/AiInferenceProgressDialog.h
+    src/ui/pointcloud_editor/AiInferenceProgressDialog.ui
+    src/ui/pointcloud_editor/AiModelConfigDialog.cpp
+    src/ui/pointcloud_editor/AiModelConfigDialog.h
+    src/ui/pointcloud_editor/ExportPointcloudDialog.cpp
+    src/ui/pointcloud_editor/ExportPointcloudDialog.h
+    src/ui/pointcloud_editor/ExportPointcloudDialog.ui
     src/ui/pointcloud_editor/PointcloudEditorDialog.cpp
     src/ui/pointcloud_editor/PointcloudEditorDialog.h
     src/ui/pointcloud_editor/PointcloudEditorDialog.ui
@@ -121,7 +134,7 @@ set(SMCP_SOURCES_UI
     src/ui/widgets/ProjectorWidget.h
 )
 
-# Dialogo de captura: requiere Spinnaker.
+# The capture dialog requires Spinnaker.
 set(SMCP_SOURCES_UI_CAPTURE
     src/ui/CaptureDialog.cpp
     src/ui/CaptureDialog.h
@@ -140,6 +153,11 @@ set(SMCP_SOURCES_CORE
     src/core/Scan3d.h
     src/core/StructuredLight.cpp
     src/core/StructuredLight.h
+)
+
+set(SMCP_SOURCES_AI
+    src/ai/WslModelService.cpp
+    src/ai/WslModelService.h
 )
 
 set(SMCP_SOURCES_CAMERA
@@ -167,12 +185,13 @@ set(SMCP_RESOURCES
 )
 
 # ---------------------------------------------------------------------------
-# Ejecutable
+# Executable
 # ---------------------------------------------------------------------------
 add_executable(SMCP
     ${SMCP_SOURCES_APP}
     ${SMCP_SOURCES_UI}
     ${SMCP_SOURCES_CORE}
+    ${SMCP_SOURCES_AI}
     ${SMCP_SOURCES_EXPORT}
     ${SMCP_SOURCES_COMMON}
     ${SMCP_RESOURCES}
@@ -182,20 +201,20 @@ if(SMCP_WITH_SPINNAKER)
     target_sources(SMCP PRIVATE ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CAMERA})
 endif()
 
-# Vista de carpetas en Visual Studio / IDEs.
+# Folder view in Visual Studio and other IDEs.
 source_group(TREE "${CMAKE_SOURCE_DIR}" FILES
-    ${SMCP_SOURCES_APP} ${SMCP_SOURCES_UI} ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CORE}
+    ${SMCP_SOURCES_APP} ${SMCP_SOURCES_UI} ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CORE} ${SMCP_SOURCES_AI}
     ${SMCP_SOURCES_CAMERA} ${SMCP_SOURCES_EXPORT} ${SMCP_SOURCES_COMMON} ${SMCP_RESOURCES})
 
 set_target_properties(SMCP PROPERTIES
     OUTPUT_NAME SMCP
     DEBUG_POSTFIX _d
-    # Release sin consola (WinMain via Qt5::WinMain); Debug con consola.
+    # Release has no console (WinMain through Qt5::WinMain); Debug keeps the console.
     WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
 )
 
-# Un unico directorio de inclusion: los includes llevan el subdirectorio
-# ("app/Application.h", "core/Scan3d.h", ...). Los .ui viven junto a su clase.
+# A single include directory: includes are qualified with their subdirectory
+# ("app/Application.h", "core/Scan3d.h", ...). Each .ui form lives next to its class.
 target_include_directories(SMCP PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_compile_definitions(SMCP PRIVATE
@@ -206,8 +225,8 @@ target_compile_definitions(SMCP PRIVATE
     _ENABLE_EXTENDED_ALIGNED_STORAGE
     UNICODE
     _UNICODE
-    # opencv2/flann (2.4) usa std::random_shuffle, retirado en C++17; la STL de MSVC lo
-    # conserva si se activa esta macro.
+    # opencv2/flann (2.4) uses std::random_shuffle, removed in C++17; the MSVC STL
+    # keeps it when this macro is defined.
     _HAS_AUTO_PTR_ETC=1
     $<$<BOOL:${SMCP_WITH_SPINNAKER}>:USE_SPINNAKER>
 )
@@ -216,7 +235,7 @@ target_compile_options(SMCP PRIVATE
     /W3
     /MP
     /utf-8
-    /external:W0   # sin avisos de cabeceras de Qt, OpenCV y Spinnaker
+    /external:W0   # no warnings from Qt, OpenCV, and Spinnaker headers
 )
 
 target_link_libraries(SMCP PRIVATE
@@ -235,9 +254,22 @@ target_link_libraries(SMCP PRIVATE
     $<$<BOOL:${SMCP_WITH_SPINNAKER}>:Spinnaker::Spinnaker>
 )
 
+if(BUILD_TESTING)
+    add_executable(SMCP_ai_tests
+        tests/AiModelTests.cpp
+        src/ai/WslModelService.cpp
+        src/ai/WslModelService.h
+    )
+    target_include_directories(SMCP_ai_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_ai_tests PRIVATE UNICODE _UNICODE)
+    target_compile_options(SMCP_ai_tests PRIVATE /W3 /utf-8)
+    target_link_libraries(SMCP_ai_tests PRIVATE Qt5::Core)
+    add_test(NAME ai_model_contract COMMAND SMCP_ai_tests)
+endif()
+
 # ---------------------------------------------------------------------------
-# compile_commands.json para clangd (Zed): anade /vctoolsdir y el Windows SDK
-# a cada comando para que clang-cl encuentre la STL fuera del entorno de VS.
+# compile_commands.json for clangd (Zed): adds /vctoolsdir and the Windows SDK to
+# every command so clang-cl finds the STL outside the Visual Studio environment.
 # ---------------------------------------------------------------------------
 if(CMAKE_EXPORT_COMPILE_COMMANDS AND CMAKE_GENERATOR MATCHES "Ninja|Makefiles")
     # .../VC/Tools/MSVC/<ver>/bin/Hostx64/x64/cl.exe -> .../VC/Tools/MSVC/<ver>
@@ -258,12 +290,12 @@ if(CMAKE_EXPORT_COMPILE_COMMANDS AND CMAKE_GENERATOR MATCHES "Ninja|Makefiles")
                 -DWINSDKDIR=${_winsdkdir}
                 -DWINSDKVER=${_winsdkver}
                 -P "${CMAKE_SOURCE_DIR}/cmake/PatchCompileCommands.cmake"
-        COMMENT "Completando compile_commands.json para clangd"
+        COMMENT "Completing compile_commands.json for clangd"
         VERBATIM)
 endif()
 
 # ---------------------------------------------------------------------------
-# Post-build: ejecutable autocontenido en build/<preset>/bin
+# Post-build: self-contained executable in build/<preset>/bin
 # ---------------------------------------------------------------------------
 if(SMCP_DEPLOY_RUNTIME)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${SMCP_QT_BIN_DIR}" REQUIRED)
@@ -281,7 +313,7 @@ if(SMCP_DEPLOY_RUNTIME)
                 "$<TARGET_FILE:opencv_features2d>"
                 "$<TARGET_FILE:opencv_flann>"
                 "$<TARGET_FILE_DIR:SMCP>"
-        COMMENT "Desplegando Qt y OpenCV junto a $<TARGET_FILE_NAME:SMCP>"
+        COMMENT "Deploying Qt and OpenCV next to $<TARGET_FILE_NAME:SMCP>"
         VERBATIM)
 
     if(SMCP_WITH_SPINNAKER)
@@ -289,7 +321,7 @@ if(SMCP_DEPLOY_RUNTIME)
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                     "$<IF:$<CONFIG:Debug>,${Spinnaker_RUNTIME_DEBUG},${Spinnaker_RUNTIME_RELEASE}>"
                     "$<TARGET_FILE_DIR:SMCP>"
-            COMMENT "Desplegando Spinnaker junto a $<TARGET_FILE_NAME:SMCP>"
+            COMMENT "Deploying Spinnaker next to $<TARGET_FILE_NAME:SMCP>"
             COMMAND_EXPAND_LISTS
             VERBATIM)
     endif()

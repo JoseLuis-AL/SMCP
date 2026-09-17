@@ -1,23 +1,23 @@
 <#
 .SYNOPSIS
-    Configura y compila SMCP con CMake desde cualquier consola de PowerShell.
+    Configures and builds SMCP with CMake from any PowerShell console.
 
 .DESCRIPTION
-    Importa el entorno de desarrollador x64 de Visual Studio (cl, cmake, ninja)
-    si no esta ya cargado, ejecuta "cmake --preset" y "cmake --build --preset".
-    Requiere CMakeUserPresets.json (genéralo con scripts\bootstrap.ps1).
+    Imports the Visual Studio x64 developer environment (cl, cmake, ninja) when it
+    is not already loaded, then runs "cmake --preset" and "cmake --build --preset".
+    Requires CMakeUserPresets.json (generate it with scripts\bootstrap.ps1).
 
 .PARAMETER Config
-    Debug (por defecto) o Release.
+    Debug (default) or Release.
 
 .PARAMETER Generator
-    ninja (por defecto) o vs2026 (genera build\vs2026\SMCP.sln y compila con MSBuild).
+    ninja (default) or vs2026 (generates build\vs2026\SMCP.slnx and builds with MSBuild).
 
 .PARAMETER Clean
-    Borra el directorio build\<preset> antes de configurar.
+    Deletes the build\<preset> directory before configuring.
 
 .PARAMETER Run
-    Lanza el ejecutable al terminar.
+    Starts the executable when the build finishes.
 
 .EXAMPLE
     .\scripts\build.ps1
@@ -41,28 +41,28 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
 if (-not (Test-Path (Join-Path $repoRoot 'CMakeUserPresets.json'))) {
-    Write-Host 'No existe CMakeUserPresets.json. Ejecuta primero: .\scripts\bootstrap.ps1' -ForegroundColor Red
+    Write-Host 'CMakeUserPresets.json does not exist. Run .\scripts\bootstrap.ps1 first.' -ForegroundColor Red
     exit 1
 }
 
 # ---------------------------------------------------------------------------
-# Entorno de desarrollador de Visual Studio (solo si hace falta)
+# Visual Studio developer environment (only when needed)
 # ---------------------------------------------------------------------------
 function Import-VsDevEnvironment {
     if (Get-Command cl.exe -ErrorAction SilentlyContinue) {
-        Write-Host "cl.exe ya esta en PATH; se reutiliza el entorno actual." -ForegroundColor DarkGray
+        Write-Host "cl.exe is already in PATH; reusing the current environment." -ForegroundColor DarkGray
         return
     }
 
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path $vswhere)) {
-        throw "No se encontro vswhere.exe. Instala Visual Studio 2026 con la carga 'Desarrollo de escritorio con C++'."
+        throw "vswhere.exe was not found. Install Visual Studio 2026 with the 'Desktop development with C++' workload."
     }
 
-    # Preferir VS 2026 (18.x); si no, la mas reciente con el toolset de C++.
+    # Prefer VS 2026 (18.x); otherwise use the newest installation with the C++ toolset.
     $installs = & $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json | ConvertFrom-Json
     if (-not $installs) {
-        throw "Visual Studio con el toolset de C++ no encontrado."
+        throw "No Visual Studio installation with the C++ toolset was found."
     }
     $vs = $installs | Where-Object { $_.installationVersion -like '18.*' } | Select-Object -First 1
     if (-not $vs) {
@@ -71,11 +71,11 @@ function Import-VsDevEnvironment {
 
     $vsDevCmd = Join-Path $vs.installationPath 'Common7\Tools\VsDevCmd.bat'
     if (-not (Test-Path $vsDevCmd)) {
-        throw "No se encontro VsDevCmd.bat en $($vs.installationPath)"
+        throw "VsDevCmd.bat was not found in $($vs.installationPath)"
     }
 
-    Write-Host "Importando entorno x64 de: $($vs.displayName) ($($vs.installationVersion))" -ForegroundColor Cyan
-    # VsDevCmd.bat invoca vswhere.exe por nombre; lo ponemos en PATH para evitar su aviso.
+    Write-Host "Importing the x64 environment from: $($vs.displayName) ($($vs.installationVersion))" -ForegroundColor Cyan
+    # VsDevCmd.bat calls vswhere.exe by name; adding it to PATH avoids its warning.
     $env:PATH = (Split-Path $vswhere) + ';' + $env:PATH
     $envDump = cmd.exe /d /c "`"$vsDevCmd`" -arch=x64 -host_arch=x64 -no_logo 2>nul && set"
     # Some hosts expose both PATH and Path. cmd.exe prints both, but VsDevCmd updates only
@@ -89,7 +89,7 @@ function Import-VsDevEnvironment {
     }
 
     if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
-        throw "cl.exe sigue sin estar disponible tras importar VsDevCmd."
+        throw "cl.exe is still unavailable after importing VsDevCmd."
     }
 }
 
@@ -97,12 +97,12 @@ Import-VsDevEnvironment
 
 foreach ($tool in 'cmake.exe', 'ninja.exe') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        throw "$tool no esta en PATH. Instala el componente 'Herramientas de CMake de C++ para Windows' de Visual Studio."
+        throw "$tool is not in PATH. Install the Visual Studio component 'C++ CMake tools for Windows'."
     }
 }
 
 # ---------------------------------------------------------------------------
-# Configurar y compilar
+# Configure and build
 # ---------------------------------------------------------------------------
 if ($Generator -eq 'ninja') {
     $configurePreset = "ninja-$($Config.ToLower())"
@@ -114,7 +114,7 @@ if ($Generator -eq 'ninja') {
 
 $buildDir = Join-Path $repoRoot "build\$configurePreset"
 if ($Clean -and (Test-Path $buildDir)) {
-    Write-Host "Limpiando $buildDir" -ForegroundColor Yellow
+    Write-Host "Cleaning $buildDir" -ForegroundColor Yellow
     Remove-Item -Recurse -Force $buildDir
 }
 
@@ -128,7 +128,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $exeName = if ($Config -eq 'Debug') { 'SMCP_d.exe' } else { 'SMCP.exe' }
 $exePath = Join-Path $buildDir "bin\$exeName"
-Write-Host "Ejecutable: $exePath" -ForegroundColor Green
+Write-Host "Executable: $exePath" -ForegroundColor Green
 
 if ($Run) {
     Start-Process -FilePath $exePath -WorkingDirectory (Split-Path $exePath)

@@ -819,9 +819,7 @@ void MainWindow::on_reconstruction_action_button_clicked(bool checked)
 /// <param name="checked">Indicates whether the button is in a checked state (not used).</param>
 void MainWindow::on_pointcloud_action_button_clicked(bool checked)
 {
-	PointcloudEditorDialog dialog(APP->GetRootDir(), this);
-	dialog.setModal(true);
-	dialog.exec();
+	PointcloudEditorDialog::Execute(APP->GetRootDir(), this);
 }
 
 /* PREVIEW BUTTONS ========================================================================= */

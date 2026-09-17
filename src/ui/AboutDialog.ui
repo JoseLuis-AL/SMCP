@@ -55,7 +55,7 @@
        <item>
         <widget class="QLabel" name="title_label">
          <property name="text">
-          <string>SMCP: Camera-Proyector Measuring System</string>
+          <string>SMCP: Camera-Projector Measuring System</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>

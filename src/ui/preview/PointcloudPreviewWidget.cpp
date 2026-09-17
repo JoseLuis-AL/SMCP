@@ -4,12 +4,20 @@
 #include <limits>
 
 #include <QDebug>
+#include <QAbstractItemModel>
+#include <QComboBox>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMouseEvent>
+#include <QMessageBox>
+#include <QOpenGLContext>
+#include <QPainter>
+#include <QPixmap>
+#include <QRegularExpression>
 #include <QResizeEvent>
 #include <QTimer>
 #include <QToolButton>
@@ -38,6 +46,22 @@ static const char* Fragment_Shader_Source =
 "    gl_FragColor = vec4(v_color, 1.0);\n"
 "}\n";
 
+static QIcon ColorPreviewIcon(const QColor& color)
+{
+	QPixmap preview(18, 18);
+	preview.fill(Qt::transparent);
+	QPainter painter(&preview);
+	painter.setRenderHint(QPainter::Antialiasing, false);
+	painter.setPen(QColor("#777777"));
+	painter.setBrush(color.isValid() ? color : QColor(Qt::transparent));
+	painter.drawRect(1, 1, 15, 15);
+	if (!color.isValid())
+	{
+		painter.drawLine(2, 15, 15, 2);
+	}
+	return QIcon(preview);
+}
+
 /* Construction ============================================================================ */
 
 PointcloudPreviewWidget::PointcloudPreviewWidget(QWidget* parent)
@@ -55,11 +79,22 @@ PointcloudPreviewWidget::PointcloudPreviewWidget(QWidget* parent)
 	_cloudListWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	_cloudListWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	_cloudListWidget->hide();
-	_cloudListWidget->installEventFilter(this);
+	// A drag-and-drop move is the only way rows move. The rebuild is deferred because rowsMoved is
+	// emitted inside the list drop handler, before it finishes with the rows being replaced.
+	connect(_cloudListWidget->model(), &QAbstractItemModel::rowsMoved, this,
+		[this]() { QTimer::singleShot(0, this, [this]() { OnCloudListReordered(); }); });
 }
 
 PointcloudPreviewWidget::~PointcloudPreviewWidget()
 {
+	// During application shutdown Qt may already have released the widget's OpenGL context.
+	// In that case there is no valid context in which to destroy GPU objects explicitly.
+	if (!context() || !context()->isValid())
+	{
+		_clouds.clear();
+		return;
+	}
+
 	makeCurrent();
 	for (auto& entry : _clouds)
 	{
@@ -237,6 +272,7 @@ PointcloudPreviewWidget::PreparedPointcloud PointcloudPreviewWidget::PreparePoin
 	prepared.buffer.resize(static_cast<std::size_t>(prepared.vertexCount) * 6);
 	prepared.bbMin = QVector3D(minX, minY, minZ);
 	prepared.bbMax = QVector3D(maxX, maxY, maxZ);
+	prepared.colorOverride = colorOverride;
 	prepared.color = colorOverride;
 	if (!useOverride && prepared.vertexCount > 0)
 	{
@@ -259,6 +295,7 @@ int PointcloudPreviewWidget::AddPreparedPointcloud(PreparedPointcloud&& prepared
 	entry->vertexCount = prepared.vertexCount;
 	entry->pendingUpload = true;
 	entry->color = prepared.color;
+	entry->colorOverride = prepared.colorOverride;
 
 	if (_clouds.empty())
 	{
@@ -290,6 +327,23 @@ int PointcloudPreviewWidget::AddPointcloud(const Pointcloud::ColorCloudPtr& clou
 	return AddPreparedPointcloud(std::move(prepared));
 }
 
+int PointcloudPreviewWidget::PrependPointcloud(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride,
+	const QString& name)
+{
+	const int addedIndex = AddPointcloud(cloud, colorOverride, name);
+	if (addedIndex <= 0)
+	{
+		return addedIndex;
+	}
+
+	auto entry = std::move(_clouds.back());
+	_clouds.pop_back();
+	_clouds.insert(_clouds.begin(), std::move(entry));
+	RebuildCloudList();
+	update();
+	return 0;
+}
+
 std::vector<PointcloudPreviewWidget::ListedPointcloud> PointcloudPreviewWidget::Pointclouds() const
 {
 	std::vector<ListedPointcloud> pointclouds;
@@ -298,10 +352,32 @@ std::vector<PointcloudPreviewWidget::ListedPointcloud> PointcloudPreviewWidget::
 	{
 		if (entry->sourceCloud)
 		{
-			pointclouds.push_back(ListedPointcloud{ entry->sourceCloud, entry->name });
+			pointclouds.push_back(ListedPointcloud{ entry->sourceCloud, entry->name, entry->visible });
 		}
 	}
 	return pointclouds;
+}
+
+void PointcloudPreviewWidget::SetPointcloudColor(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride)
+{
+	for (int i = 0; i < static_cast<int>(_clouds.size()); ++i)
+	{
+		if (_clouds[i]->sourceCloud == cloud)
+		{
+			SetPointcloudColor(i, colorOverride);
+			return;
+		}
+	}
+}
+
+void PointcloudPreviewWidget::SetAllPointcloudsVisible(bool visible)
+{
+	for (auto& entry : _clouds)
+	{
+		entry->visible = visible;
+	}
+	RebuildCloudList();
+	update();
 }
 
 void PointcloudPreviewWidget::RemovePointcloud(int index)
@@ -314,24 +390,6 @@ void PointcloudPreviewWidget::RemovePointcloud(int index)
 	DestroyEntry(*_clouds[index]);
 	doneCurrent();
 	_clouds.erase(_clouds.begin() + index);
-
-	RebuildCloudList();
-	update();
-}
-
-void PointcloudPreviewWidget::ClearPointclouds()
-{
-	if (_clouds.empty())
-	{
-		return;
-	}
-	makeCurrent();
-	for (auto& entry : _clouds)
-	{
-		DestroyEntry(*entry);
-	}
-	doneCurrent();
-	_clouds.clear();
 
 	RebuildCloudList();
 	update();
@@ -361,6 +419,89 @@ void PointcloudPreviewWidget::RenamePointcloud(int index, const QString& name)
 	}
 }
 
+void PointcloudPreviewWidget::ChoosePointcloudColor(int index)
+{
+	if (index < 0 || index >= static_cast<int>(_clouds.size()))
+	{
+		return;
+	}
+
+	const QStringList colors = {
+		"None", "00529d", "f2a023", "e43b44", "8351bd",
+		"f5f5f5", "03648b", "e5b83f", "d93f4b", "25855b"
+	};
+	const QColor currentOverride = _clouds[index]->colorOverride;
+	QString selected = currentOverride.isValid() ? currentOverride.name(QColor::HexRgb).mid(1) : "None";
+
+	for (;;)
+	{
+		QInputDialog dialog(this);
+		dialog.setWindowTitle(tr("Point cloud color"));
+		dialog.setLabelText(tr("Color (RRGGBB or None):"));
+		dialog.setComboBoxItems(colors);
+		dialog.setComboBoxEditable(true);
+		if (auto* combo = dialog.findChild<QComboBox*>())
+		{
+			combo->setIconSize(QSize(18, 18));
+			for (int colorIndex = 1; colorIndex < colors.size(); ++colorIndex)
+			{
+				combo->setItemIcon(colorIndex, ColorPreviewIcon(QColor("#" + colors[colorIndex])));
+			}
+			combo->setItemIcon(0, ColorPreviewIcon(QColor()));
+			combo->setEditText(selected);
+		}
+
+		if (dialog.exec() != QDialog::Accepted)
+		{
+			return;
+		}
+		if (auto* combo = dialog.findChild<QComboBox*>())
+		{
+			selected = combo->currentText().trimmed();
+		}
+		else
+		{
+			selected = dialog.textValue().trimmed();
+		}
+		if (selected.compare("None", Qt::CaseInsensitive) == 0)
+		{
+			SetPointcloudColor(index, QColor());
+			return;
+		}
+		if (selected.startsWith('#'))
+		{
+			selected.remove(0, 1);
+		}
+		if (QRegularExpression("^[0-9A-Fa-f]{6}$").match(selected).hasMatch())
+		{
+			SetPointcloudColor(index, QColor("#" + selected));
+			return;
+		}
+
+		QMessageBox::warning(this, tr("Invalid color"),
+			tr("Enter None or a six-digit hexadecimal color such as 03648b."));
+	}
+}
+
+void PointcloudPreviewWidget::SetPointcloudColor(int index, const QColor& colorOverride)
+{
+	if (index < 0 || index >= static_cast<int>(_clouds.size()) || !_clouds[index]->sourceCloud)
+	{
+		return;
+	}
+
+	auto& entry = *_clouds[index];
+	auto prepared = PreparePointcloud(*entry.sourceCloud, colorOverride, entry.name);
+	entry.pendingBuffer = std::move(prepared.buffer);
+	entry.vertexCount = prepared.vertexCount;
+	entry.pendingUpload = true;
+	entry.color = prepared.color;
+	entry.colorOverride = prepared.colorOverride;
+
+	RebuildCloudList();
+	update();
+}
+
 /* Overlay list ============================================================================ */
 
 void PointcloudPreviewWidget::RebuildCloudList()
@@ -382,12 +523,26 @@ void PointcloudPreviewWidget::RebuildCloudList()
 		layout->setContentsMargins(8, 2, 4, 2);
 		layout->setSpacing(6);
 
-		auto* colorIndicator = new QLabel(row);
-		colorIndicator->setFixedSize(10, 10);
-		colorIndicator->setToolTip(tr("Point cloud color"));
+		auto* firstIndicator = new QLabel(row);
+		firstIndicator->setFixedSize(18, 18);
+		if (i == 0)
+		{
+			firstIndicator->setPixmap(QIcon(":/first-pointcloud-icon.svg").pixmap(18, 18));
+			firstIndicator->setToolTip(tr("First point cloud; commands are applied to this entry"));
+		}
+
+		auto* colorIndicator = new QToolButton(row);
+		colorIndicator->setObjectName("pointcloud_overlay_color");
+		colorIndicator->setFixedSize(18, 18);
+		colorIndicator->setToolTip(_clouds[i]->colorOverride.isValid()
+			? tr("Change point cloud color")
+			: tr("Change point cloud color (None: using point colors)"));
+		colorIndicator->setCursor(Qt::PointingHandCursor);
 		const QColor color = _clouds[i]->color.isValid() ? _clouds[i]->color : QColor(200, 200, 200);
-		colorIndicator->setStyleSheet(QString("background-color: %1; border: 1px solid rgba(255, 255, 255, 90); "
-			"border-radius: 5px;").arg(color.name(QColor::HexRgb)));
+		colorIndicator->setStyleSheet(QString("QToolButton { background-color: %1; "
+			"border: 1px solid rgba(255, 255, 255, 120); border-radius: 9px; }")
+			.arg(color.name(QColor::HexRgb)));
+		connect(colorIndicator, &QToolButton::clicked, this, [this, i]() { ChoosePointcloudColor(i); });
 
 		auto* indexLabel = new QLabel(QString("#%1").arg(i + 1), row);
 		indexLabel->setObjectName("pointcloud_overlay_label");
@@ -433,6 +588,7 @@ void PointcloudPreviewWidget::RebuildCloudList()
 		deleteButton->setCursor(Qt::PointingHandCursor);
 		connect(deleteButton, &QToolButton::clicked, this, [this, i]() { RemovePointcloud(i); });
 
+		layout->addWidget(firstIndicator, 0, Qt::AlignVCenter);
 		layout->addWidget(colorIndicator, 0, Qt::AlignVCenter);
 		layout->addWidget(indexLabel, 0);
 		layout->addWidget(nameEdit, 1);
@@ -498,10 +654,6 @@ bool PointcloudPreviewWidget::eventFilter(QObject* obj, QEvent* event)
 			nameEdit->selectAll();
 			return true;
 		}
-	}
-	if (obj == _cloudListWidget && event->type() == QEvent::Drop)
-	{
-		QTimer::singleShot(0, this, [this]() { OnCloudListReordered(); });
 	}
 	return QOpenGLWidget::eventFilter(obj, event);
 }

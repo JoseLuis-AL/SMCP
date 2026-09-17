@@ -52,59 +52,36 @@
       </widget>
      </item>
      <item>
-      <widget class="QToolButton" name="refresh_button">
+      <widget class="QToolButton" name="load_pointcloud_button">
        <property name="toolTip">
-        <string>Scan again for .xyz files</string>
+        <string>Add the selected point cloud to the editor</string>
+       </property>
+       <property name="text">
+        <string>Load</string>
        </property>
        <property name="icon">
         <iconset resource="../../../resources/resources.qrc">
-         <normaloff>:/resfresh-icon.svg</normaloff>:/resfresh-icon.svg</iconset>
-       </property>
-       <property name="text">
-        <string>Refresh</string>
-       </property>
-       <property name="toolButtonStyle">
-        <enum>Qt::ToolButtonTextBesideIcon</enum>
+         <normaloff>:/load-pointcloud-icon.svg</normaloff>:/load-pointcloud-icon.svg</iconset>
        </property>
        <property name="iconSize">
         <size>
-         <width>20</width>
-         <height>20</height>
+         <width>15</width>
+         <height>15</height>
         </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
        </property>
       </widget>
      </item>
     </layout>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="command_layout">
+    <layout class="QHBoxLayout" name="processing_layout">
      <item>
-      <widget class="QLabel" name="command_label">
+      <widget class="QLabel" name="processing_label">
        <property name="text">
-        <string>Commands:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QToolButton" name="remove_outliers_button">
-       <property name="toolTip">
-        <string>Configure and run Statistical Outlier Removal</string>
-       </property>
-       <property name="text">
-        <string>Remove Outliers</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../../../resources/resources.qrc">
-         <normaloff>:/remove-outlier-command-icon.svg</normaloff>:/remove-outlier-command-icon.svg</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>20</width>
-         <height>20</height>
-        </size>
-       </property>
-       <property name="toolButtonStyle">
-        <enum>Qt::ToolButtonTextBesideIcon</enum>
+        <string>Processing: </string>
        </property>
       </widget>
      </item>
@@ -129,7 +106,24 @@
       </widget>
      </item>
      <item>
-      <spacer name="command_spacer">
+      <widget class="QLabel" name="ai_model_label">
+       <property name="text">
+        <string>AI Model:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="ai_model_combo">
+       <property name="minimumSize">
+        <size>
+         <width>120</width>
+         <height>0</height>
+        </size>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="processing_spacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
        </property>
@@ -141,13 +135,24 @@
        </property>
       </spacer>
      </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="command_layout">
+     <item>
+      <widget class="QLabel" name="command_label">
+       <property name="text">
+        <string>Commands:</string>
+       </property>
+      </widget>
+     </item>
      <item>
       <widget class="QToolButton" name="save_button">
        <property name="toolTip">
-        <string>Export all point clouds currently in the list</string>
+        <string>Export the first point cloud, each point cloud separately, or the visible ones combined</string>
        </property>
        <property name="text">
-        <string>Export</string>
+        <string> Export</string>
        </property>
        <property name="icon">
         <iconset resource="../../../resources/resources.qrc">
@@ -155,8 +160,8 @@
        </property>
        <property name="iconSize">
         <size>
-         <width>20</width>
-         <height>20</height>
+         <width>15</width>
+         <height>15</height>
         </size>
        </property>
        <property name="toolButtonStyle">
@@ -165,24 +170,40 @@
       </widget>
      </item>
      <item>
-      <widget class="QToolButton" name="close_button">
+      <widget class="QToolButton" name="remove_outliers_button">
+       <property name="toolTip">
+        <string>Configure and run Statistical Outlier Removal</string>
+       </property>
        <property name="text">
-        <string>Close</string>
+        <string> Remove Outliers</string>
        </property>
        <property name="icon">
         <iconset resource="../../../resources/resources.qrc">
-         <normaloff>:/icon-close.svg</normaloff>:/icon-close.svg</iconset>
+         <normaloff>:/remove-outlier-command-icon.svg</normaloff>:/remove-outlier-command-icon.svg</iconset>
        </property>
        <property name="iconSize">
         <size>
-         <width>20</width>
-         <height>20</height>
+         <width>15</width>
+         <height>15</height>
         </size>
        </property>
        <property name="toolButtonStyle">
         <enum>Qt::ToolButtonTextBesideIcon</enum>
        </property>
       </widget>
+     </item>
+     <item>
+      <spacer name="command_spacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
      </item>
     </layout>
    </item>

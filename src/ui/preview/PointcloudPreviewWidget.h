@@ -67,7 +67,8 @@ public:
 		int vertexCount = 0;
 		QVector3D bbMin;
 		QVector3D bbMax;
-		QColor color;  ///< Override color, or the average point color when no override is used.
+		QColor color;  ///< Representative color shown in the overlay.
+		QColor colorOverride;  ///< Invalid means that the RGB stored in each point is used.
 		QString name;
 	};
 
@@ -75,6 +76,7 @@ public:
 	{
 		Pointcloud::ColorCloudPtr cloud;
 		QString name;
+		bool visible = true;
 	};
 
 	explicit PointcloudPreviewWidget(QWidget* parent = nullptr);
@@ -92,9 +94,15 @@ public:
 	/// Prepares and adds a cloud on the calling thread; returns its index (-1 if empty or with no finite points).
 	int AddPointcloud(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride = QColor(),
 		const QString& name = QString());
+	/// Adds a cloud at the beginning of the overlay and rendering order.
+	int PrependPointcloud(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride = QColor(),
+		const QString& name = QString());
 	std::vector<ListedPointcloud> Pointclouds() const;
+	/// Changes the display color of the first list entry backed by `cloud`.
+	void SetPointcloudColor(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride);
+	/// Changes the visibility of every point cloud currently in the list.
+	void SetAllPointcloudsVisible(bool visible);
 	void RemovePointcloud(int index);
-	void ClearPointclouds();
 
 protected:
 	void initializeGL() override;
@@ -117,7 +125,8 @@ private:
 		Pointcloud::ColorCloudPtr sourceCloud;
 		bool pendingUpload = false;
 		bool visible = true;
-		QColor color;
+		QColor color;  ///< Representative color shown in the overlay.
+		QColor colorOverride;  ///< Invalid means that the RGB stored in each point is used.
 		QString name;
 
 		CloudEntry() : vbo(QOpenGLBuffer::VertexBuffer) {}
@@ -130,7 +139,9 @@ private:
 	void RebuildCloudList();
 	void RepositionOverlay();
 	void OnCloudListReordered();
+	void ChoosePointcloudColor(int index);
 	void RenamePointcloud(int index, const QString& name);
+	void SetPointcloudColor(int index, const QColor& colorOverride);
 	void SetPointcloudVisible(int index, bool visible);
 
 	void UploadEntry(CloudEntry& entry);

@@ -1,43 +1,48 @@
 /* =============================================================================
-   SMCP - tema visual unico
-   Se carga una sola vez en smcp::Application::apply_theme() sobre el estilo
-   "Fusion". Ningun .ui ni ningun widget define styleSheet ni font propios;
-   la fuente de aplicacion (Segoe UI 9pt) se fija con QApplication::setFont.
+   SMCP - application-wide visual theme
+   Loaded once by smcp::Application::ApplyTheme() on top of the "Fusion" style.
+   The application font (Segoe UI 9pt) is set with QApplication::setFont. Forms
+   do not set their own styleSheet or font; the only runtime exceptions are
+   documented in docs/STYLE.md.
 
-   TOKENS (referencia; QSS no admite variables, los valores se repiten tal cual)
+   TOKENS (reference only; QSS has no variables, so values are repeated as-is)
    ----------------------------------------------------------------------------
-   Colores
-     base         #f0f0f0                 fondo de ventanas, dialogos y grupos
-     surface      #ffffff                 fondo de vistas, listas y campos
-     border       #d1d1d1                 borde y separador de grupos
-     border-soft  #dcdcdc                 borde de vistas, campos y progreso
-     hover        rgba(199, 199, 199, 0.4) fondo al pasar el raton (botones de vista)
-     active       #c7c7c7                 pulsado / seleccionado (botones de vista)
-     accent       #3e8948                 acento: barra de progreso y cruz de
-                                          alineacion del proyector (ProjectorWidget)
-   Tipografia
-     familia      Segoe UI                (Application.cpp, QApplication::setFont)
-     base         9pt                     controles, etiquetas, menus
-     grupo        10pt bold               titulos de QGroupBox
-     dialogo      10pt                    etiquetas del dialogo "Acerca de"
-     subtitulo    11pt                    AboutDialog#course_label
-     titulo       16pt                    AboutDialog#title_label
-   Geometria
-     radio        4px                     grupos, vistas, campos, botones de vista
-     titulo grupo padding 0 10px, margin-top 5px; el grupo reserva margin-top 20px
-   Espaciado (definido en los .ui, no aqui)
-     dialogo      margen 9px, spacing 6px (layout raiz de cada QDialog)
-     grupo        margen 6px, spacing 6px (layouts internos)
+   Colors
+     base         #f0f0f0                  window, dialog, and group backgrounds
+     surface      #ffffff                  view, list, and field backgrounds
+     border       #d1d1d1                  group borders and separators
+     border-soft  #dcdcdc                  view, field, and progress borders
+     hover        rgba(199, 199, 199, 0.4) hovered view selector button
+     active       #c7c7c7                  pressed or checked view selector button
+     accent       #3e8948                  progress bar and projector alignment
+                                           cross (ProjectorWidget)
+     overlay      rgba(20, 20, 20, 180)    point-cloud list over the 3D viewport
+     visibility   #00529d                  point-cloud visibility button
+     delete       #e43b44                  point-cloud delete button
+   Typography
+     family       Segoe UI                 (Application.cpp, QApplication::setFont)
+     base         9pt                      controls, labels, and menus
+     group        10pt bold                QGroupBox titles
+     dialog       10pt                     About dialog labels
+     subtitle     11pt                     AboutDialog#course_label
+     title        16pt                     AboutDialog#title_label
+     ai-title     12pt bold                AiInferenceProgressDialog#title_label
+   Geometry
+     radius       4px                      groups, views, fields, view buttons
+     group title  padding 0 10px, margin-top 5px; groups reserve margin-top 20px
+   Spacing (defined in the .ui files, not here)
+     dialog       9px margins, 6px spacing (root layout of each QDialog)
+     group        6px margins, 6px spacing (nested layouts)
    ============================================================================= */
 
-/* --- Superficies base ------------------------------------------------------ */
+/* --- Base surfaces -------------------------------------------------------- */
 QMainWindow,
 QDialog,
 QGroupBox {
     background-color: #f0f0f0;
 }
 
-/* --- Grupos ---------------------------------------------------------------- */
+/* --- Groups --------------------------------------------------------------- */
 QGroupBox {
     border: 0px solid #d1d1d1;
     border-radius: 4px;
@@ -53,7 +58,7 @@ QGroupBox::title {
     margin-top: 5px;
 }
 
-/* Grupos de parametros del panel derecho (MainWindow): separador superior. */
+/* Parameter groups in the right panel (MainWindow): top separator only. */
 QGroupBox#checkerboard_group,
 QGroupBox#robust_decode_group,
 QGroupBox#calibration_group,
@@ -61,13 +66,13 @@ QGroupBox#reconstruction_group {
     border-top: 1px solid #d1d1d1;
 }
 
-/* Grupos de proyector y camara (CaptureDialog): borde completo. */
+/* Projector and camera groups (CaptureDialog): full border. */
 QGroupBox#projector_group,
 QGroupBox#camera_group {
     border: 1px solid #d1d1d1;
 }
 
-/* --- Vistas y campos ------------------------------------------------------- */
+/* --- Views and fields ----------------------------------------------------- */
 QTreeView,
 QListView,
 QTableView,
@@ -88,9 +93,9 @@ QTableView::corner {
     border-radius: 4px;
 }
 
-/* --- Selector de vista (MainWindow): botones planos con estado ------------- */
-/* Solo los QToolButton del grupo "Current View"; los botones de acciones
-   conservan el aspecto normal de Fusion. */
+/* --- View selector (MainWindow): flat buttons with state ------------------ */
+/* Only the QToolButtons in the "Current View" group; action buttons keep the
+   regular Fusion appearance. */
 QGroupBox#current_image_group QToolButton {
     border: none;
     border-radius: 4px;
@@ -106,7 +111,7 @@ QGroupBox#current_image_group QToolButton:pressed {
     background: #c7c7c7;
 }
 
-/* Lista superpuesta del visor 3D: panel oscuro translucido sobre fondo negro. */
+/* Point-cloud overlay list: translucent dark panel over the black 3D viewport. */
 QListWidget#pointcloud_overlay_list {
     background: rgba(20, 20, 20, 180);
     color: #ffffff;
@@ -176,7 +181,7 @@ QToolButton#pointcloud_overlay_delete:pressed {
     background: #c92f38;
 }
 
-/* --- Progreso -------------------------------------------------------------- */
+/* --- Progress ------------------------------------------------------------- */
 QProgressBar {
     background: #ffffff;
     border: 1px solid #dcdcdc;
@@ -189,7 +194,13 @@ QProgressBar::chunk {
     border-radius: 3px;
 }
 
-/* --- Dialogo "Acerca de" --------------------------------------------------- */
+/* "Thinking..." window shown during AI inference. */
+QDialog#AiInferenceProgressDialog QLabel#title_label {
+    font-size: 12pt;
+    font-weight: bold;
+}
+
+/* --- About dialog --------------------------------------------------------- */
 QDialog#AboutDialog QLabel {
     font-size: 10pt;
 }

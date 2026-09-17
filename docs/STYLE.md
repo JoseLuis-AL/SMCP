@@ -39,6 +39,7 @@ Typography and geometry conventions:
 | About-dialog labels | 10 pt |
 | About subtitle | 11 pt |
 | About title | 16 pt |
+| AI inference window title | 12 pt, bold |
 | Standard corner radius | 4 px |
 | Dialog root layout | 9 px margins, 6 px spacing |
 | Main-window group content | 6 px margins, 6 px spacing |
@@ -52,7 +53,7 @@ Rules in `smcp.qss` move from broad to specific:
 3. item views and text fields;
 4. the Current View tool buttons and their checked state;
 5. point-cloud editor controls and preview overlay;
-6. progress bar; and
+6. progress bar and the AI inference window title; and
 7. About-dialog typography.
 
 Prefer selectors by widget type. Use an `objectName` selector only when one concrete widget
@@ -67,16 +68,28 @@ Decode, and other `QToolButton` actions from inheriting the flat selector appear
 `PointcloudPreviewWidget` places a compact list on top of its black OpenGL viewport. Each
 row contains:
 
-- a circular color swatch matching the cloud's rendered color;
-- a name, editable by double-clicking it;
+- an arrow icon on the first row only, marking the cloud that editor commands use;
+- a circular color swatch matching the cloud's rendered color. It is a button that opens the
+  color chooser, whose preset entries show `QPainter`-drawn color previews;
+- the row number and a name, editable by double-clicking it;
 - the current point count;
 - a blue visibility button with a white open-eye or closed-eye icon; and
 - a red delete button with a white trash icon.
 
 The overlay surface and buttons are defined in QSS. The color swatch is a deliberate
 runtime `setStyleSheet()` exception because its value belongs to each cloud, not to the
-application theme. `ProjectorWidget` is the other color exception: it paints the alignment
-cross with `QPainter` because the mark is part of the projected image.
+application theme. Two other color exceptions exist: `ProjectorWidget` paints the alignment
+cross with `QPainter` because the mark is part of the projected image, and
+`AiModelConfigDialog` colors its validation message with the `delete` token (`#e43b44`) only
+while the JSON configuration is invalid.
+
+## AI inference window
+
+`AiInferenceProgressDialog` uses standard widgets so the theme applies automatically: an
+indeterminate `QProgressBar` (range 0 to 0) animates while the model runs. Its bold 12 pt
+*Thinking...* title is the only rule specific to the dialog and lives in the progress section
+of `smcp.qss`. The dialog has no context-help button, and Escape is ignored so a long run is
+not cancelled by accident.
 
 ## Adding UI without breaking consistency
 
@@ -96,7 +109,7 @@ cross with `QPainter` because the mark is part of the projected image.
 
 ## Current visual reference
 
-These screenshots were captured from the current Release build. They are visual references,
+These screenshots were captured from a Release build. They are visual references,
 not pixel-perfect automated snapshots.
 
 | Window | Reference |
@@ -106,7 +119,9 @@ not pixel-perfect automated snapshots.
 | Calibration | ![](screenshots/CalibrationDialog.png) |
 | About | ![](screenshots/About.png) |
 
-The point-cloud editor screenshots demonstrate its operations:
+The point-cloud editor screenshots demonstrate its operations. They were captured before the
+Load button, AI Model selector, first-cloud marker, and export options were added, so the
+command bar and the arrangement of some results differ from version 3.0.2:
 
 | State | Reference |
 |---|---|
