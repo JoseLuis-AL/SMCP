@@ -42,10 +42,11 @@ public:
     ProcessingDialog(QWidget * parent = 0, Qt::WindowFlags flags = 0);
     ~ProcessingDialog();
 
-    inline void SetCurrentMessage(const QString & text) {current_message_label->setText(text);}
+    /// Status line; an error status is shown in the error color.
+    void SetCurrentMessage(const QString & text);
     void Reset(void);
-    inline void SetProgressTotal(unsigned value) {_total = value; progress_bar->setMaximum(_total);}
-    inline void SetProgressValue(unsigned value) {progress_bar->setValue(value);}
+    inline void SetProgressTotal(unsigned value) {_total = value; progress_bar->setMaximum(_total); UpdatePercent();}
+    inline void SetProgressValue(unsigned value) {progress_bar->setValue(value); UpdatePercent();}
 
     void Finish(void);
 
@@ -53,12 +54,29 @@ public:
 
     inline bool Canceled(void) const {return _cancel;}
 
+    /// True when the log holds something the user should read (an error, a warning, a set without
+    /// chessboard, a cancellation). Callers keep the dialog open in that case.
+    inline bool NeedsAttention(void) const {return _attention;}
+
+    /// Esc or the window manager: cancels a running operation instead of hiding its dialog.
+    void reject() override;
+
+signals:
+    /// The user asked to stop the running operation.
+    void CancelRequested();
+
 public slots:
     void on_close_cancel_button_clicked(bool checked = false);
 
 private:
+    /// Shows the progress as a number beside the bar (the bar itself carries no text).
+    void UpdatePercent(void);
+    /// "Cancel" (danger color) while the operation runs, "Close" (primary) once it has ended.
+    void SetRunning(bool running);
+
     unsigned _total;
     bool _cancel;
+    bool _attention;
 };
 
 } // namespace smcp

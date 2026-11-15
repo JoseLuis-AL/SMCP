@@ -7,6 +7,8 @@
     build\ninja-release\bin, the app-local Visual C++ runtime, the license, the user
     guide, and a quick-start file for end users, and compresses everything into
     dist\SMCP-<version>-win64.zip. It also writes the SHA256 hash of the package.
+    With -NoCamera it packages the build without camera support (no Spinnaker files) as
+    dist\SMCP-<version>-win64-nocamera.zip.
 
 .PARAMETER Version
     Package version. By default it is read from project(... VERSION x.y.z) in CMakeLists.txt.
@@ -14,8 +16,11 @@
 .PARAMETER OutputDir
     Directory that receives the .zip. Defaults to dist\ in the repository root.
 
+.PARAMETER NoCamera
+    Builds and packages the variant without camera support (build\ninja-release-nocamera).
+
 .PARAMETER SkipBuild
-    Uses the current contents of build\ninja-release\bin without rebuilding.
+    Uses the current contents of the build directory without rebuilding.
 
 .EXAMPLE
     .\scripts\package-release.ps1
@@ -25,6 +30,7 @@
 param(
     [string]$Version,
     [string]$OutputDir,
+    [switch]$NoCamera,
     [switch]$SkipBuild
 )
 
@@ -47,6 +53,10 @@ if (-not $OutputDir) { $OutputDir = Join-Path $repoRoot 'dist' }
 
 $binDir = Join-Path $repoRoot 'build\ninja-release\bin'
 $packageName = "SMCP-$Version-win64"
+if ($NoCamera) {
+    $binDir = Join-Path $repoRoot 'build\ninja-release-nocamera\bin'
+    $packageName = "$packageName-nocamera"
+}
 $stageRoot = Join-Path $repoRoot 'build\package'
 $stageDir = Join-Path $stageRoot $packageName
 $zipPath = Join-Path $OutputDir "$packageName.zip"
@@ -55,7 +65,7 @@ $zipPath = Join-Path $OutputDir "$packageName.zip"
 # Build
 # ---------------------------------------------------------------------------
 if (-not $SkipBuild) {
-    & (Join-Path $PSScriptRoot 'build.ps1') -Config Release
+    & (Join-Path $PSScriptRoot 'build.ps1') -Config Release -NoCamera:$NoCamera
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
@@ -71,8 +81,8 @@ New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
 
 Write-Host "==> Copying the application from $binDir" -ForegroundColor Green
 Copy-Item -Path (Join-Path $binDir '*') -Destination $stageDir -Recurse -Force
-# Symbols, import libraries, and CTest executables are not part of the application.
-Get-ChildItem -Path $stageDir -Recurse -Include *.pdb, *.ilk, *.exp, *.lib, SMCP_*tests*.exe |
+# Symbols, import libraries, and the test and developer tools (SMCP_*.exe) are not part of the application.
+Get-ChildItem -Path $stageDir -Recurse -Include *.pdb, *.ilk, *.exp, *.lib, SMCP_*.exe |
     Remove-Item -Force -ErrorAction SilentlyContinue
 $leftovers = Get-ChildItem -Path $stageDir -Recurse -Filter '*test*' -File
 if ($leftovers) {

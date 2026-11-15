@@ -1,45 +1,93 @@
-/* =============================================================================
-   SMCP - application-wide visual theme
-   Loaded once by smcp::Application::ApplyTheme() on top of the "Fusion" style.
-   The application font (Segoe UI 9pt) is set with QApplication::setFont. Forms
-   do not set their own styleSheet or font; the only runtime exceptions are
-   documented in docs/STYLE.md.
-
-   TOKENS (reference only; QSS has no variables, so values are repeated as-is)
-   ----------------------------------------------------------------------------
-   Colors
-     base         #f0f0f0                  window, dialog, and group backgrounds
-     surface      #ffffff                  view, list, and field backgrounds
-     border       #d1d1d1                  group borders and separators
-     border-soft  #dcdcdc                  view, field, and progress borders
-     hover        rgba(199, 199, 199, 0.4) hovered view selector button
-     active       #c7c7c7                  pressed or checked view selector button
-     accent       #3e8948                  progress bar and projector alignment
-                                           cross (ProjectorWidget)
-     overlay      rgba(20, 20, 20, 180)    point-cloud list over the 3D viewport
-     visibility   #00529d                  point-cloud visibility button
-     delete       #e43b44                  point-cloud delete button
-   Typography
-     family       Segoe UI                 (Application.cpp, QApplication::setFont)
-     base         9pt                      controls, labels, and menus
-     group        10pt bold                QGroupBox titles
-     dialog       10pt                     About dialog labels
-     subtitle     11pt                     AboutDialog#course_label
-     title        16pt                     AboutDialog#title_label
-     ai-title     12pt bold                AiInferenceProgressDialog#title_label
-   Geometry
-     radius       4px                      groups, views, fields, view buttons
-     group title  padding 0 10px, margin-top 5px; groups reserve margin-top 20px
-   Spacing (defined in the .ui files, not here)
-     dialog       9px margins, 6px spacing (root layout of each QDialog)
-     group        6px margins, 6px spacing (nested layouts)
-   ============================================================================= */
+/* Application-wide Segoe UI typography: Fluent Windows 12/20/28 effective pixels.
+   Point sizes are 9/15/21 at 96 DPI and scale with the Qt font system. */
+QWidget {
+    font-family: "Segoe UI";
+    font-size: 9pt;
+}
 
 /* --- Base surfaces -------------------------------------------------------- */
+/* One window background (Fluent solid background base) for the main window, the Point Cloud
+   Editor and every dialog. */
 QMainWindow,
 QDialog,
 QGroupBox {
-    background-color: #f0f0f0;
+    background-color: #f3f3f3;
+}
+
+/* --- Menus ------------------------------------------------------------------
+   Fluent menu bar and flyouts, the same in the main window and in the editor. The first title
+   starts where the content below it starts: 5 px of item padding plus the space the style adds
+   around a menu bar item. */
+QMenuBar {
+    background: #f3f3f3;
+    color: #1a1a1a;
+    border: none;
+    spacing: 4px;
+    padding: 4px 0px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    border-radius: 4px;
+    padding: 6px 5px;
+}
+
+QMenuBar::item:selected {
+    background: #eaeaea;
+}
+
+QMenuBar::item:pressed {
+    background: #e5e5e5;
+}
+
+QMenu {
+    background: #f9f9f9;
+    color: #1a1a1a;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QMenu::item {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    margin: 2px 0px;
+    padding: 7px 12px;
+}
+
+QMenu::item:selected {
+    background: #ededed;
+}
+
+QMenu::item:disabled {
+    color: #9d9d9d;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 8px;
+}
+
+/* The main window's content starts 4 px further in than the editor's. */
+QMainWindow > QMenuBar {
+    padding-left: 4px;
+}
+
+/* --- Status bar ------------------------------------------------------------ */
+QStatusBar {
+    background: #f3f3f3;
+    color: #5c5c5c;
+}
+
+QStatusBar::item {
+    border: none;
+}
+
+QStatusBar QLabel {
+    color: #5c5c5c;
+    padding: 0px 6px 2px 6px;
 }
 
 /* --- Groups --------------------------------------------------------------- */
@@ -49,11 +97,10 @@ QGroupBox {
     margin-top: 20px;
 }
 
+/* Section titles use the body font: sections are told apart by position and spacing, not weight. */
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top center;
-    font-size: 10pt;
-    font-weight: bold;
     padding: 0 10px;
     margin-top: 5px;
 }
@@ -79,23 +126,401 @@ QTableView,
 QTextEdit,
 QPlainTextEdit {
     background: #ffffff;
-    border: 1px solid #dcdcdc;
+    border: 1px solid #bdbdbd;
     border-radius: 4px;
+}
+
+QTreeView:focus,
+QListView:focus,
+QTableView:focus {
+    border-color: #0067c0;
+}
+
+/* A selected row is a quiet tint with dark text, never the saturated system highlight. */
+QTreeView,
+QListView,
+QTableView {
+    selection-background-color: #dbe7f3;
+    selection-color: #1a1a1a;
 }
 
 QTreeView#image_tree {
     padding-top: 5px;
 }
 
+/* Workspace rows: 4 px of air above and below each set, so neighbouring check boxes and names do
+   not touch. */
+QTreeView#image_tree::item {
+    padding: 4px 0px;
+}
+
+QTreeView#image_tree::item:selected {
+    background: #dbe7f3;
+    color: #1a1a1a;
+}
+
+/* Check boxes inside a view: the dialog check box at row scale. */
+QTreeView::indicator,
+QListView::indicator,
+QTableView::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #757575;
+    border-radius: 3px;
+    background: #ffffff;
+}
+
+QTreeView::indicator:checked,
+QListView::indicator:checked,
+QTableView::indicator:checked,
+QTreeView::indicator:indeterminate,
+QListView::indicator:indeterminate,
+QTableView::indicator:indeterminate {
+    background: #0067c0;
+    border-color: #0067c0;
+}
+
+QTreeView::indicator:checked,
+QListView::indicator:checked,
+QTableView::indicator:checked {
+    image: url(:/check-white.svg);
+}
+
+QTreeView::indicator:disabled,
+QListView::indicator:disabled,
+QTableView::indicator:disabled {
+    background: #f3f3f3;
+    border-color: #c8c8c8;
+}
+
+/* --- Tables -----------------------------------------------------------------
+   Fluent data table: a white surface, a quiet header in the secondary text color, rows divided
+   by hairlines only (no vertical grid lines, no zebra) and 8 px of horizontal cell padding. */
+QTableView {
+    gridline-color: #ececec;
+    outline: none;
+}
+
+QTableView::item {
+    border: none;
+    border-bottom: 1px solid #ececec;
+    padding: 0px 8px;
+}
+
+QTableView::item:selected {
+    background: #dbe7f3;
+    color: #1a1a1a;
+}
+
+QHeaderView {
+    background: #ffffff;
+    border: none;
+}
+
+QHeaderView::section {
+    background: #ffffff;
+    color: #5c5c5c;
+    border: none;
+    border-bottom: 1px solid #d1d1d1;
+    padding: 4px 11px;  /* the text lines up with the cells: their 8 px plus the 3 px item margin */
+}
+
 QTreeView::corner,
-QTableView::corner {
-    border: 1px solid #dcdcdc;
+QTableView::corner,
+QTableView QTableCornerButton::section {
+    background: #ffffff;
+    border: none;
+}
+
+/* --- Buttons and fields ---------------------------------------------------
+   Borders are dark enough to outline a white control on the window background.
+   Hover fills buttons only; a field keeps its white background so its text stays
+   readable. Every control shows keyboard focus with the accent border. */
+QPushButton,
+QToolButton,
+QComboBox,
+QAbstractSpinBox,
+QLineEdit {
+    background: #ffffff;
+    border: 1px solid #bdbdbd;
     border-radius: 4px;
+    padding: 4px 6px;
+    min-height: 18px;
+}
+
+QPushButton:hover,
+QToolButton:hover,
+QComboBox:hover {
+    background: #e5f1fb;
+    border-color: #7ab8e8;
+}
+
+QAbstractSpinBox:hover,
+QLineEdit:hover,
+QTextEdit:hover,
+QPlainTextEdit:hover {
+    border-color: #8a8a8a;
+}
+
+QPushButton:pressed,
+QToolButton:pressed,
+QComboBox:on {
+    background: #e0e0e0;
+    border-color: #bdbdbd;
+}
+
+/* A checked (toggle) button is an active state, not a pressed or disabled one. */
+QPushButton:checked,
+QToolButton:checked {
+    background: #cce4f7;
+    border-color: #0067c0;
+}
+
+QPushButton:focus,
+QToolButton:focus,
+QComboBox:focus,
+QAbstractSpinBox:focus {
+    border-color: #0067c0;
+}
+
+QPushButton:disabled,
+QToolButton:disabled,
+QComboBox:disabled,
+QAbstractSpinBox:disabled,
+QLineEdit:disabled {
+    background: #f5f5f5;
+    border-color: #dcdcdc;
+    color: #a0a0a0;
+}
+
+/* The action a dialog exists for (set by EditorDialogStyle on its accept button). */
+QPushButton[primary="true"] {
+    background: #0067c0;
+    border-color: #0067c0;
+    color: #ffffff;
+}
+
+QPushButton[primary="true"]:hover {
+    background: #1975c5;
+    border-color: #1975c5;
+}
+
+QPushButton[primary="true"]:pressed {
+    background: #005a9e;
+    border-color: #005a9e;
+}
+
+QPushButton[primary="true"]:focus {
+    border-color: #1a1a1a;
+}
+
+QPushButton[primary="true"]:disabled {
+    background: #c8c8c8;
+    border-color: #c8c8c8;
+    color: #ffffff;
+}
+
+QComboBox {
+    padding-right: 26px;
+    combobox-popup: 0;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 22px;
+    border: none;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    background: transparent;
+}
+
+QComboBox::down-arrow {
+    image: url(:/chevron-down.svg);
+    width: 12px;
+    height: 12px;
+}
+
+QComboBox QAbstractItemView {
+    background: #ffffff;
+    border: 1px solid #bdbdbd;
+    border-radius: 4px;
+    outline: none;
+    selection-background-color: #cce4f7;
+    selection-color: #1a1a1a;
+}
+
+/* An open list always has the focus; its border stays neutral. */
+QComboBox QAbstractItemView:focus {
+    border-color: #bdbdbd;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 18px;
+    padding: 4px 6px;
+}
+
+QAbstractSpinBox {
+    padding-right: 26px;
+}
+
+QAbstractSpinBox::up-button,
+QAbstractSpinBox::down-button {
+    subcontrol-origin: border;
+    width: 22px;
+    height: 13px;
+    border: none;
+    background: transparent;
+}
+
+QAbstractSpinBox::up-button {
+    subcontrol-position: top right;
+    border-top-right-radius: 4px;
+}
+
+QAbstractSpinBox::down-button {
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: 4px;
+}
+
+QAbstractSpinBox::up-button:hover,
+QAbstractSpinBox::down-button:hover {
+    background: #e5f1fb;
+}
+
+QAbstractSpinBox::up-button:pressed,
+QAbstractSpinBox::down-button:pressed {
+    background: #e0e0e0;
+}
+
+QAbstractSpinBox::up-arrow {
+    image: url(:/chevron-up.svg);
+    width: 10px;
+    height: 8px;
+}
+
+QAbstractSpinBox::down-arrow {
+    image: url(:/chevron-down.svg);
+    width: 10px;
+    height: 8px;
+}
+
+QCheckBox,
+QRadioButton {
+    spacing: 6px;
+    min-height: 28px;
+}
+
+/* The border is the only cue of an unchecked box, so it is the darkest one.
+   Checked uses the accent, which cannot be mistaken for the gray disabled state. */
+QCheckBox::indicator,
+QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #757575;
+    border-radius: 4px;
+    background: #ffffff;
+}
+
+QRadioButton::indicator {
+    border-radius: 10px;
+}
+
+QCheckBox::indicator:hover,
+QRadioButton::indicator:hover {
+    background: #e5f1fb;
+    border-color: #0067c0;
+}
+
+QCheckBox::indicator:focus,
+QRadioButton::indicator:focus {
+    border: 2px solid #0067c0;
+    width: 16px;
+    height: 16px;
+}
+
+QCheckBox::indicator:checked,
+QRadioButton::indicator:checked {
+    background: #0067c0;
+    border-color: #0067c0;
+}
+
+QCheckBox::indicator:checked {
+    image: url(:/check-white.svg);
+}
+
+QRadioButton::indicator:checked {
+    image: url(:/radio-dot-white.svg);
+}
+
+QCheckBox::indicator:checked:hover,
+QRadioButton::indicator:checked:hover {
+    background: #1975c5;
+    border-color: #1975c5;
+}
+
+QCheckBox::indicator:checked:focus,
+QRadioButton::indicator:checked:focus {
+    border-color: #1a1a1a;
+}
+
+QCheckBox::indicator:pressed,
+QRadioButton::indicator:pressed {
+    background: #cce4f7;
+    border-color: #0067c0;
+}
+
+QCheckBox::indicator:disabled,
+QRadioButton::indicator:disabled {
+    background: #f3f3f3;
+    border-color: #c8c8c8;
+}
+
+QCheckBox::indicator:checked:disabled,
+QRadioButton::indicator:checked:disabled {
+    background: #b0b0b0;
+    border-color: #b0b0b0;
+}
+
+QCheckBox:disabled,
+QRadioButton:disabled {
+    color: #a0a0a0;
+}
+
+QAbstractSpinBox::up-button:disabled,
+QAbstractSpinBox::down-button:disabled {
+    background: transparent;
+}
+
+QTextEdit,
+QPlainTextEdit {
+    padding: 4px 6px;
+}
+
+QLineEdit:focus,
+QTextEdit:focus,
+QPlainTextEdit:focus {
+    border-color: #0067c0;
+}
+
+QAbstractSpinBox QLineEdit,
+QComboBox QLineEdit {
+    background: transparent;
+    border: none;
+    padding: 0px;
+    min-height: 0px;
+}
+
+QPlainTextEdit#ai_model_configuration_editor {
+    font-family: "Cascadia Mono";
+    background: #ffffff;
+}
+
+QPlainTextEdit#ai_model_configuration_editor:focus {
+    border-color: #0067c0;
 }
 
 /* --- View selector (MainWindow): flat buttons with state ------------------ */
-/* Only the QToolButtons in the "Current View" group; action buttons keep the
-   regular Fusion appearance. */
 QGroupBox#current_image_group QToolButton {
     border: none;
     border-radius: 4px;
@@ -111,104 +536,165 @@ QGroupBox#current_image_group QToolButton:pressed {
     background: #c7c7c7;
 }
 
-/* Point-cloud overlay list: translucent dark panel over the black 3D viewport. */
-QListWidget#pointcloud_overlay_list {
-    background: rgba(20, 20, 20, 180);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 40);
-    border-radius: 6px;
+QGroupBox#current_image_group QToolButton:focus {
+    background: rgba(0, 103, 192, 0.18);
+}
+
+QGroupBox#current_image_group QToolButton:checked:focus {
+    background: #b4c9dc;
+}
+
+/* Point-cloud layer panel (PointcloudLayersPanel) docked beside the 3D viewport. */
+QWidget#tools_panel QToolButton {
+    padding: 0px;
+    min-width: 34px;
+    min-height: 34px;
+}
+
+QFrame#tools_separator {
+    color: #e0e0e0;
+}
+
+/* The layer tree looks like the Workspace tree of the main window: air between the rows, a quiet
+   selection and the common check boxes. The color square of a row is painted by the panel. */
+QTreeView#layer_tree {
     outline: none;
+    padding-top: 5px;
 }
 
-QListWidget#pointcloud_overlay_list::item {
-    padding: 2px 0px;
-    border: none;
+QTreeView#layer_tree::item {
+    padding: 4px 0px;
 }
 
-QListWidget#pointcloud_overlay_list::item:selected {
-    background: rgba(255, 255, 255, 25);
+QTreeView#layer_tree::item:selected {
+    background: #dbe7f3;
+    color: #1a1a1a;
 }
 
-QListWidget#pointcloud_overlay_list::item:hover {
-    background: rgba(255, 255, 255, 15);
+QTreeView#layer_tree::item:hover:!selected {
+    background: #f5f5f5;
 }
 
-QLabel#pointcloud_overlay_label {
-    color: #ffffff;
+QLabel#layer_details_info {
+    color: #666666;
+}
+
+/* Icon-only actions in the Point Clouds header. */
+QToolButton#merge_pointclouds_button,
+QToolButton#remove_pointclouds_button,
+QToolButton#load_pointcloud_button,
+QToolButton#save_button {
     background: transparent;
-}
-
-QLineEdit#pointcloud_overlay_name {
-    color: #ffffff;
-    background: transparent;
-    border: 1px solid transparent;
-    padding: 1px 2px;
-}
-
-QLineEdit#pointcloud_overlay_name:focus {
-    background: rgba(255, 255, 255, 20);
-    border: 1px solid rgba(255, 255, 255, 90);
-    border-radius: 2px;
-}
-
-QToolButton#pointcloud_overlay_visibility {
-    background: #00529d;
     border: none;
-    border-radius: 3px;
-    padding: 0px;
+    border-radius: 4px;
+    padding: 2px;
 }
 
-QToolButton#pointcloud_overlay_visibility:hover {
-    background: #0068c7;
+QToolButton#merge_pointclouds_button:hover,
+QToolButton#remove_pointclouds_button:hover,
+QToolButton#load_pointcloud_button:hover,
+QToolButton#save_button:hover {
+    background: rgba(199, 199, 199, 0.4);
 }
 
-QToolButton#pointcloud_overlay_visibility:pressed {
-    background: #003f79;
+QToolButton#merge_pointclouds_button:pressed,
+QToolButton#remove_pointclouds_button:pressed,
+QToolButton#load_pointcloud_button:pressed,
+QToolButton#save_button:pressed {
+    background: #c7c7c7;
 }
 
-QToolButton#pointcloud_overlay_delete {
-    background: #e43b44;
-    border: none;
-    border-radius: 3px;
-    padding: 0px;
-}
-
-QToolButton#pointcloud_overlay_delete:hover {
-    background: #ee5059;
-}
-
-QToolButton#pointcloud_overlay_delete:pressed {
-    background: #c92f38;
+QToolButton#merge_pointclouds_button:focus,
+QToolButton#remove_pointclouds_button:focus,
+QToolButton#load_pointcloud_button:focus,
+QToolButton#save_button:focus {
+    background: rgba(0, 103, 192, 0.18);
 }
 
 /* --- Progress ------------------------------------------------------------- */
+/* Fluent progress bar: a thin track with the accent color. It never carries text (the value,
+   when there is one, is shown in a label beside it), so no text has to be read over the fill. */
 QProgressBar {
-    background: #ffffff;
-    border: 1px solid #dcdcdc;
-    border-radius: 4px;
-    text-align: center;
+    background: #d6d6d6;
+    border: none;
+    border-radius: 2px;
+    min-height: 4px;
+    max-height: 4px;
+    color: transparent;
 }
 
 QProgressBar::chunk {
-    background-color: #3e8948;
-    border-radius: 3px;
+    background-color: #0067c0;
+    border-radius: 2px;
 }
 
-/* "Thinking..." window shown during AI inference. */
+/* --- Danger buttons --------------------------------------------------------
+   Stopping something that is running: the Cancel of a progress dialog and the
+   editor's Cancel command. A dialog's ordinary Cancel is not one of them. */
+QPushButton[danger="true"],
+QToolButton#cancel_command_button {
+    background: #e43b44;
+    border-color: #e43b44;
+    color: #ffffff;
+}
+
+QPushButton[danger="true"]:hover,
+QToolButton#cancel_command_button:hover {
+    background: #ee5059;
+    border-color: #ee5059;
+}
+
+QPushButton[danger="true"]:pressed,
+QToolButton#cancel_command_button:pressed {
+    background: #c92f38;
+    border-color: #c92f38;
+}
+
+QPushButton[danger="true"]:focus,
+QToolButton#cancel_command_button:focus {
+    border-color: #1a1a1a;
+}
+
+QPushButton[danger="true"]:disabled,
+QToolButton#cancel_command_button:disabled {
+    background: #c8c8c8;
+    border-color: #c8c8c8;
+    color: #ffffff;
+}
+
+/* Fluent Title (28 effective pixels) during AI inference. */
 QDialog#AiInferenceProgressDialog QLabel#title_label {
-    font-size: 12pt;
-    font-weight: bold;
+    font-size: 21pt;
+    font-weight: 600;
 }
 
 /* --- About dialog --------------------------------------------------------- */
 QDialog#AboutDialog QLabel {
-    font-size: 10pt;
+    font-size: 9pt;
 }
 
-QDialog#AboutDialog QLabel#course_label {
+/* Fluent Title for the product name, Body Large for its full name. */
+QDialog#AboutDialog QLabel#title_label {
+    font-size: 21pt;
+    font-weight: 600;
+}
+
+QDialog#AboutDialog QLabel#subtitle_label {
     font-size: 11pt;
 }
 
-QDialog#AboutDialog QLabel#title_label {
-    font-size: 16pt;
+/* Version, field names and copyright: secondary text. */
+QDialog#AboutDialog QLabel[role="caption"] {
+    color: #5c5c5c;
 }
+
+/* Hairlines under the header and above the footer. */
+QDialog#AboutDialog QFrame#header_separator,
+QDialog#AboutDialog QFrame#footer_separator {
+    border: none;
+    background: #d1d1d1;
+    max-height: 1px;
+    min-height: 1px;
+}
+
+

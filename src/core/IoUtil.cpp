@@ -33,11 +33,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fstream>
 #include <float.h>
 
-#if defined(_MSC_VER) && !defined(isnan)
-# include <float.h>
-# define isnan _isnan
-#endif
-
 #include "core/StructuredLight.h"
 
 namespace smcp

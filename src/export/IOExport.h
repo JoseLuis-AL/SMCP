@@ -29,55 +29,59 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include <string>
+#include <QStringList>
 #include "core/PointcloudOps.h"
 #include "core/Scan3d.h"
 
 namespace smcp::IOExport
 {
-// PLY export flags (bitmask).
-enum PlyFlag : unsigned
-{
-	PlyPoints = 0x01,
-	PlyColors = 0x02,
-	PlyNormals = 0x04,
-	PlyBinary = 0x08
-};
+	/// Checks every destination before export; no files are created or overwritten.
+	bool ValidateNewFiles(const QStringList& paths, QString& error);
 
-// XYZ export format.
-enum class XyzFormat
-{
-	Xyz,     // X Y Z
-	XyzRgb   // X Y Z R G B
-};
+	// PLY export flags (bitmask).
+	enum PlyFlag : unsigned
+	{
+		PlyPoints = 0x01,
+		PlyColors = 0x02,
+		PlyNormals = 0x04,
+		PlyBinary = 0x08
+	};
 
-/// <summary>
-/// Writes the pointcloud to a PLY file (binary or ASCII). Filters out invalid points and normals before writing.
-/// </summary>
-/// <param name="filename">Output file path.</param>
-/// <param name="pointcloud">Source pointcloud data.</param>
-/// <param name="flags">Bitmask of PlyFlag values controlling the output format.</param>
-/// <returns>True if the file was written successfully.</returns>
-bool WritePly(const std::string& filename, const Scan3d::Pointcloud& pointcloud, unsigned flags);
+	// XYZ export format.
+	enum class XyzFormat
+	{
+		Xyz,   // X Y Z
+		XyzRgb // X Y Z R G B
+	};
 
-/// <summary>
-/// Writes the pointcloud to an ASCII file. Outputs space-separated columns: X Y Z, or X Y Z R G B.
-/// </summary>
-/// <param name="filename">Output file path (.xyz, .txt, or .pts).</param>
-/// <param name="pointcloud">Source pointcloud data.</param>
-/// <param name="format">Column format (Xyz or XyzRgb).</param>
-/// <returns>True if the file was written successfully.</returns>
-bool WriteXyz(const std::string& filename, const Scan3d::Pointcloud& pointcloud, XyzFormat format = XyzFormat::Xyz);
+	/// <summary>
+	/// Writes the pointcloud to a PLY file (binary or ASCII). Filters out invalid points and normals before writing.
+	/// </summary>
+	/// <param name="filename">Output file path.</param>
+	/// <param name="pointcloud">Source pointcloud data.</param>
+	/// <param name="flags">Bitmask of PlyFlag values controlling the output format.</param>
+	/// <returns>True if the file was written successfully.</returns>
+	bool WritePly(const std::string& filename, const Scan3d::Pointcloud& pointcloud, unsigned flags);
 
-/// <summary>
-/// Reads an ASCII point cloud (X Y Z [R G B] per line) into a colored cloud. Lines with fewer than three
-/// fields are skipped; points without color get a neutral gray (200, 200, 200).
-/// </summary>
-/// <returns>True if the file could be opened.</returns>
-bool ReadXyz(const std::string& filename, Pointcloud::ColorCloud& cloud);
+	/// <summary>
+	/// Writes the pointcloud to an ASCII file. Outputs space-separated columns: X Y Z, or X Y Z R G B.
+	/// </summary>
+	/// <param name="filename">Output file path (.xyz, .txt, or .pts).</param>
+	/// <param name="pointcloud">Source pointcloud data.</param>
+	/// <param name="format">Column format (Xyz or XyzRgb).</param>
+	/// <returns>True if the file was written successfully.</returns>
+	bool WriteXyz(const std::string& filename, const Scan3d::Pointcloud& pointcloud, XyzFormat format = XyzFormat::Xyz);
 
-/// <summary>
-/// Writes a colored cloud as ASCII "X Y Z R G B" lines (six decimals for coordinates).
-/// </summary>
-/// <returns>True if the file was written successfully.</returns>
-bool WriteXyz(const std::string& filename, const Pointcloud::ColorCloud& cloud);
+	/// <summary>
+	/// Reads an ASCII point cloud (X Y Z [R G B] per line) into a colored cloud. Lines with fewer than three
+	/// fields are skipped; points without color get a neutral gray (200, 200, 200).
+	/// </summary>
+	/// <returns>True if the file could be opened.</returns>
+	bool ReadXyz(const std::string& filename, Pointcloud::ColorCloud& cloud);
+
+	/// <summary>
+	/// Creates a new file without overwriting an existing path. Writes a colored cloud as ASCII "X Y Z R G B" lines (six decimals for coordinates).
+	/// </summary>
+	/// <returns>True if the file was written successfully.</returns>
+	bool WriteXyz(const std::string& filename, const Pointcloud::ColorCloud& cloud);
 }

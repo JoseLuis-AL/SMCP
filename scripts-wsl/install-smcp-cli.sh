@@ -9,6 +9,13 @@ smcp_model_dir="${smcp_user_home}/smcp-models"
 
 mkdir -p "${smcp_bin_dir}" "${smcp_model_dir}"
 install -m 0755 "${smcp_script_dir}/smcp" "${smcp_bin_dir}/smcp"
+# Trainers ship with SMCP, so they are always updated (unlike the editable registry).
+for smcp_trainer_dir in "${smcp_script_dir}"/trainers/*/; do
+    smcp_trainer_name="$(basename -- "${smcp_trainer_dir}")"
+    mkdir -p "${smcp_model_dir}/${smcp_trainer_name}"
+    install -m 0644 "${smcp_trainer_dir}"*.py "${smcp_model_dir}/${smcp_trainer_name}/"
+    printf 'Installed trainer %s at %s/%s\n' "${smcp_trainer_name}" "${smcp_model_dir}" "${smcp_trainer_name}"
+done
 if [[ ! -f "${smcp_model_dir}/models.json" ]]; then
     install -m 0644 "${smcp_script_dir}/models.json" "${smcp_model_dir}/models.json"
     printf 'Installed the editable model registry at %s/models.json\n' "${smcp_model_dir}"

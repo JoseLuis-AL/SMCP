@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Versioned dispatcher and metadata API for SMCP point-cloud models."""
+"""Versioned dispatcher and metadata API for SMCP point-cloud models and compensation trainers."""
 
 from __future__ import annotations
 
@@ -23,7 +23,83 @@ SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 SUPPORTED_TYPES = {"string", "integer", "number", "boolean"}
 SAFE_JOB_ID = re.compile(r"^[A-Fa-f0-9-]{32,36}$")
 SUPERVISOR_FLAG = "--supervise-job"
+SAFE_EXTENSION = re.compile(r"^\.[A-Za-z0-9]+$")
 TERMINATION_GRACE_SECONDS = 10.0
+# Added to the registry's trainers when it does not list them (the installer keeps an existing
+# registry, which may predate a trainer). Mirrors the entries shipped in models.json.
+DEFAULT_TRAINERS: list[dict[str, Any]] = [
+    {
+        "id": "pinn-smcp",
+        "display_name": "PINN compensation (SMCP)",
+        "enabled": True,
+        "environment": "model-pinn-smcp",
+        "directory": "pinn-smcp",
+        "runner": "train_pinn_smcp.py",
+        "configuration": {
+            "folds": 5,
+            "epochs": 400,
+            "hidden": 32,
+            "points_per_sphere": 600,
+            "learning_rate": 0.001,
+            "physics_learning_rate": 0.02,
+            "regularization": 0.01,
+            "smoothness": 0.01,
+            "output_bound_mm": 0.5,
+            "seed": 2026,
+            "device": "cpu"
+        },
+        "configuration_schema": {
+            "folds": {
+                "type": "integer",
+                "minimum": 1
+            },
+            "epochs": {
+                "type": "integer",
+                "minimum": 1
+            },
+            "hidden": {
+                "type": "integer",
+                "minimum": 2
+            },
+            "points_per_sphere": {
+                "type": "integer",
+                "minimum": 16
+            },
+            "learning_rate": {
+                "type": "number",
+                "exclusive_minimum": 0
+            },
+            "physics_learning_rate": {
+                "type": "number",
+                "exclusive_minimum": 0
+            },
+            "regularization": {
+                "type": "number",
+                "minimum": 0
+            },
+            "smoothness": {
+                "type": "number",
+                "minimum": 0
+            },
+            "output_bound_mm": {
+                "type": "number",
+                "exclusive_minimum": 0
+            },
+            "seed": {
+                "type": "integer",
+                "minimum": 0
+            },
+            "device": {
+                "type": "string",
+                "enum": [
+                    "auto",
+                    "cuda",
+                    "cpu"
+                ]
+            }
+        }
+    }
+]
 
 
 class RegistryError(ValueError):
@@ -178,6 +254,78 @@ def load_registry(check_files: bool = True) -> tuple[dict[str, dict[str, Any]], 
     return models, errors
 
 
+def validate_trainer(raw: Any, root: Path, conda: Path, check_files: bool = True) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise RegistryError("every trainers entry must be an object")
+    for key in ("id", "display_name", "environment", "directory", "runner"):
+        if not isinstance(raw.get(key), str) or not raw[key]:
+            raise RegistryError(f"trainer field {key!r} must be a non-empty string")
+    for key in ("id", "environment", "directory"):
+        if not SAFE_IDENTIFIER.fullmatch(raw[key]):
+            raise RegistryError(f"trainer field {key!r} contains unsafe characters")
+    if not isinstance(raw.get("enabled", True), bool):
+        raise RegistryError("trainer field 'enabled' must be boolean")
+    runner_name = validate_relative_file(raw["runner"], "runner")
+    output_extension = raw.get("output_extension", ".json")
+    if not isinstance(output_extension, str) or not SAFE_EXTENSION.fullmatch(output_extension):
+        raise RegistryError("trainer field 'output_extension' must look like '.json'")
+    configuration = raw.get("configuration")
+    schema = raw.get("configuration_schema")
+    if not isinstance(configuration, dict) or not isinstance(schema, dict):
+        raise RegistryError("configuration and configuration_schema must be JSON objects")
+    for key, rule in schema.items():
+        if not isinstance(key, str) or not key or not isinstance(rule, dict):
+            raise RegistryError("configuration_schema entries must be named objects")
+        if rule.get("type") not in SUPPORTED_TYPES:
+            raise RegistryError(f"schema for {key!r} has an unsupported type")
+    validate_configuration(configuration, schema, f"configuration for {raw['id']}")
+    if check_files:
+        if not conda.is_file():
+            raise RegistryError(f"conda was not found at {conda}")
+        if not (conda.parent.parent / "envs" / raw["environment"] / "bin/python").is_file():
+            raise RegistryError(f"conda environment is missing: {raw['environment']}")
+        if not (root / raw["directory"] / runner_name).is_file():
+            raise RegistryError(f"trainer file is missing: {root / raw['directory'] / runner_name}")
+    trainer = dict(raw)
+    trainer["enabled"] = raw.get("enabled", True)
+    trainer["output_extension"] = output_extension
+    return trainer
+
+
+def load_trainers(check_files: bool = True) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    document = read_json_object(registry_path(), "model registry")
+    raw_trainers = document.get("trainers", [])
+    if not isinstance(raw_trainers, list):
+        raise RegistryError("registry field 'trainers' must be an array")
+    # Shipped trainers the registry does not list are added, so an existing registry gains new
+    # trainers on upgrade; listing a trainer with "enabled": false hides it.
+    listed = {raw.get("id") for raw in raw_trainers if isinstance(raw, dict)}
+    raw_trainers = [*raw_trainers, *(trainer for trainer in DEFAULT_TRAINERS if trainer["id"] not in listed)]
+    trainers: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    for index, raw in enumerate(raw_trainers):
+        try:
+            enabled = raw.get("enabled", True) if isinstance(raw, dict) else True
+            trainer = validate_trainer(raw, model_root(), conda_path(), check_files and enabled)
+            if trainer["id"] in trainers:
+                raise RegistryError(f"duplicate trainer id {trainer['id']!r}")
+            if trainer["enabled"]:
+                trainers[trainer["id"]] = trainer
+        except RegistryError as error:
+            trainer_id = raw.get("id", index) if isinstance(raw, dict) else index
+            errors.append(f"{trainer_id}: {error}")
+    return trainers, errors
+
+
+def public_trainer(trainer: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": trainer["id"],
+        "display_name": trainer["display_name"],
+        "configuration": trainer["configuration"],
+        "configuration_schema": trainer["configuration_schema"],
+    }
+
+
 def public_model(model: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": model["id"],
@@ -328,13 +476,96 @@ def build_parser() -> argparse.ArgumentParser:
     actions.add_argument("--describe-model", metavar="MODEL")
     actions.add_argument("--validate-registry", action="store_true")
     actions.add_argument("--cancel-job", metavar="JOB_ID")
+    actions.add_argument("--list-trainers", action="store_true")
+    actions.add_argument("--train", metavar="TRAINER", help="train a compensation model on a dataset folder")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--model")
     parser.add_argument("--input")
     parser.add_argument("--output")
     parser.add_argument("--config-json")
     parser.add_argument("--job-id")
+    parser.add_argument("--dataset", help="training data folder for --train (it holds manifest.json)")
+    parser.add_argument("--calibration", help="calibration file the dataset was reconstructed with, for --train")
     return parser
+
+
+def configured(entry: dict[str, Any], config_json: str | None) -> dict[str, Any]:
+    """The entry's default configuration, updated with the validated values of an optional JSON file."""
+    configuration = dict(entry["configuration"])
+    if config_json:
+        custom = read_json_object(Path(config_json).expanduser(), "configuration")
+        validate_configuration(custom, entry["configuration_schema"], "configuration")
+        configuration.update(custom)
+        validate_configuration(configuration, entry["configuration_schema"], "configuration")
+    return configuration
+
+
+def train(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    trainers, _ = load_trainers(check_files=True)
+    if not args.dataset or not args.output:
+        parser.error("--dataset and --output are required for training")
+    if args.train not in trainers:
+        raise RegistryError(f"trainer is unavailable or unknown: {args.train}")
+    trainer = trainers[args.train]
+    configuration = configured(trainer, args.config_json)
+
+    dataset = Path(args.dataset).expanduser().resolve()
+    if not dataset.is_dir():
+        raise RegistryError(f"training data folder does not exist: {dataset}")
+    if not (dataset / "manifest.json").is_file():
+        raise RegistryError(f"training data folder has no manifest.json: {dataset}")
+    destination = Path(args.output).expanduser().resolve()
+    extension = trainer["output_extension"]
+    if destination.suffix.lower() != extension.lower():
+        destination = destination.with_suffix(extension)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    runner = model_root() / trainer["directory"] / trainer["runner"]
+    command = [
+        str(conda_path()), "run", "--no-capture-output", "--name", trainer["environment"],
+        "python", str(runner), "--dataset", str(dataset), "--output", str(destination),
+    ]
+    if args.calibration:
+        calibration = Path(args.calibration).expanduser().resolve()
+        if not calibration.is_file():
+            raise RegistryError(f"calibration file does not exist: {calibration}")
+        command.extend(("--calibration", str(calibration)))
+    command.extend(configuration_arguments(configuration))
+    return launch(command, runner.parent, args.job_id)
+
+
+def launch(command: list[str], cwd: Path, job_id: str | None) -> int:
+    """Runs a model or trainer command; with a job id it runs supervised so --cancel-job can stop it."""
+    if not job_id:
+        return subprocess.run(command, cwd=cwd, check=False).returncode
+
+    pid_path = job_file(job_id)
+    cancel_path = pid_path.with_suffix(".cancel")
+    if cancel_path.exists():
+        cancel_path.unlink(missing_ok=True)
+        return 130
+    # The supervisor leads a new session so --cancel-job can signal the whole tree. It holds the
+    # read end of this pipe and stops the job if this launcher disappears without cleaning up.
+    read_fd, write_fd = os.pipe()
+    try:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), SUPERVISOR_FLAG, str(read_fd), job_id,
+             "--", *command],
+            cwd=cwd, start_new_session=True, pass_fds=(read_fd,),
+        )
+    except BaseException:
+        os.close(write_fd)
+        raise
+    finally:
+        os.close(read_fd)
+    pid_path.write_text(str(process.pid), encoding="ascii")
+    try:
+        if cancel_path.exists():
+            os.killpg(process.pid, signal.SIGTERM)
+        return process.wait()
+    finally:
+        os.close(write_fd)
+        pid_path.unlink(missing_ok=True)
+        cancel_path.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -345,6 +576,17 @@ def main() -> int:
     try:
         if args.cancel_job:
             return cancel_job(args.cancel_job)
+        if args.list_trainers:
+            trainers, errors = load_trainers(check_files=True)
+            payload = {
+                "schema_version": SCHEMA_VERSION,
+                "trainers": [public_trainer(trainers[key]) for key in sorted(trainers)],
+                "warnings": errors,
+            }
+            print(json.dumps(payload, indent=2) if args.json else "\n".join(trainers))
+            return 0
+        if args.train:
+            return train(args, parser)
         models, errors = load_registry(check_files=True)
         if args.list_models:
             payload = {
@@ -371,12 +613,7 @@ def main() -> int:
             raise RegistryError(f"model is unavailable or unknown: {args.model}")
 
         model = models[args.model]
-        configuration = dict(model["configuration"])
-        if args.config_json:
-            custom = read_json_object(Path(args.config_json).expanduser(), "model configuration")
-            validate_configuration(custom, model["configuration_schema"], "configuration")
-            configuration.update(custom)
-            validate_configuration(configuration, model["configuration_schema"], "configuration")
+        configuration = configured(model, args.config_json)
 
         input_path = Path(args.input).expanduser().resolve()
         if not input_path.is_file():
@@ -389,37 +626,7 @@ def main() -> int:
             "python", str(runner), "--input", str(input_path), "--output", str(destination),
             *configuration_arguments(configuration),
         ]
-        if not args.job_id:
-            return subprocess.run(command, cwd=runner.parent, check=False).returncode
-
-        pid_path = job_file(args.job_id)
-        cancel_path = pid_path.with_suffix(".cancel")
-        if cancel_path.exists():
-            cancel_path.unlink(missing_ok=True)
-            return 130
-        # The supervisor leads a new session so --cancel-job can signal the whole tree. It holds the
-        # read end of this pipe and stops the job if this launcher disappears without cleaning up.
-        read_fd, write_fd = os.pipe()
-        try:
-            process = subprocess.Popen(
-                [sys.executable, str(Path(__file__).resolve()), SUPERVISOR_FLAG, str(read_fd), args.job_id,
-                 "--", *command],
-                cwd=runner.parent, start_new_session=True, pass_fds=(read_fd,),
-            )
-        except BaseException:
-            os.close(write_fd)
-            raise
-        finally:
-            os.close(read_fd)
-        pid_path.write_text(str(process.pid), encoding="ascii")
-        try:
-            if cancel_path.exists():
-                os.killpg(process.pid, signal.SIGTERM)
-            return process.wait()
-        finally:
-            os.close(write_fd)
-            pid_path.unlink(missing_ok=True)
-            cancel_path.unlink(missing_ok=True)
+        return launch(command, runner.parent, args.job_id)
     except RegistryError as error:
         if args.json:
             print(json.dumps({"error": str(error)}), file=sys.stderr)

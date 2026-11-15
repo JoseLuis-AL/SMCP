@@ -41,7 +41,7 @@
       "configuration": {
         "device": "auto", "niters": 2, "seed_k": 6, "seed_k_alpha": 1,
         "patch_size": 1000, "large_threshold": 20000,
-        "cluster_size": 10000, "seed": 2020
+        "cluster_size": 3000, "seed": 2020
       },
       "configuration_schema": {
         "device": {"type": "string", "enum": ["auto", "cuda", "cpu"]},
@@ -82,6 +82,34 @@
         "batch_size": {"type": "integer", "minimum": 1},
         "smoothing_neighbors": {"type": "integer", "minimum": 1},
         "seed": {"type": "integer", "minimum": 0}
+      }
+    }
+  ],
+  "trainers": [
+    {
+      "id": "pinn-smcp",
+      "display_name": "PINN compensation (SMCP)",
+      "enabled": true,
+      "environment": "model-pinn-smcp",
+      "directory": "pinn-smcp",
+      "runner": "train_pinn_smcp.py",
+      "configuration": {
+        "folds": 5, "epochs": 400, "hidden": 32, "points_per_sphere": 600,
+        "learning_rate": 0.001, "physics_learning_rate": 0.02, "regularization": 0.01,
+        "smoothness": 0.01, "output_bound_mm": 0.5, "seed": 2026, "device": "cpu"
+      },
+      "configuration_schema": {
+        "folds": {"type": "integer", "minimum": 1},
+        "epochs": {"type": "integer", "minimum": 1},
+        "hidden": {"type": "integer", "minimum": 2},
+        "points_per_sphere": {"type": "integer", "minimum": 16},
+        "learning_rate": {"type": "number", "exclusive_minimum": 0},
+        "physics_learning_rate": {"type": "number", "exclusive_minimum": 0},
+        "regularization": {"type": "number", "minimum": 0},
+        "smoothness": {"type": "number", "minimum": 0},
+        "output_bound_mm": {"type": "number", "exclusive_minimum": 0},
+        "seed": {"type": "integer", "minimum": 0},
+        "device": {"type": "string", "enum": ["auto", "cuda", "cpu"]}
       }
     }
   ]

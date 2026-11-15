@@ -215,13 +215,19 @@ Build and package the Release configuration:
 The helper runs `build.ps1 -Config Release`, stages `build/ninja-release/bin`, and adds the
 Visual C++ runtime DLLs, `LICENSE.txt`, `READ_ME_FIRST.txt`, `README.md`, and the complete
 `docs` directory, so the relative links in the documentation keep working. It writes
-`dist/SMCP-<version>-win64.zip` together with its SHA256 file. Test executables such as
-`SMCP_ai_tests.exe` are removed from the package, and the script stops if any other test file
-remains. The `scripts-wsl` directory is not packaged: users who want the optional AI models
+`dist/SMCP-<version>-win64.zip` together with its SHA256 file. The test executables and
+developer tools (every `SMCP_*.exe`, such as `SMCP_ai_tests.exe`) are removed from the package,
+and the script stops if any other test file remains. `-NoCamera` builds the variant without
+camera support in `build/ninja-release-nocamera` (`build.ps1 -Config Release -NoCamera`) and
+writes `dist/SMCP-<version>-win64-nocamera.zip`, which contains no Spinnaker files and can only
+process existing captures. The `scripts-wsl` directory is not packaged: users who want the optional AI models
 follow the [WSL models quick start](WSL_MODELS_QUICKSTART.md) with the source repository.
 The version comes from
-`CMakeLists.txt`; `-SkipBuild` reuses the current Release output and `-Version` overrides
-the archive name. Upload that archive as the GitHub release asset.
+`project(SMCP VERSION ...)` in `CMakeLists.txt`, which also sets the version shown in the About
+window; `-SkipBuild` reuses the current Release output and `-Version` overrides the archive
+name only. Publish only the `-nocamera` archive and its SHA256 file as GitHub release assets: the Spinnaker
+SDK license does not allow redistributing its runtime DLLs publicly, so the archive with camera
+support is for use on your own computers.
 
 To distribute manually instead, copy the complete `build/ninja-release/bin` directory. Do
 not copy `SMCP.exe` alone: the adjacent Qt plugins and DLLs are part of the application

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;">
+    <circle cx="12" cy="12" r="3" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    <g transform="matrix(1,0,0,1,0.717054,-4.59496)">
+        <circle cx="2" cy="7" r="1" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <g transform="matrix(1,0,0,1,1.67442,-0.0620155)">
+        <circle cx="10" cy="4" r="1" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <g transform="matrix(1,0,0,1,-1.68411,-2.02132)">
+        <circle cx="4" cy="10" r="1" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <g transform="matrix(1,0,0,1,0.242248,0.387597)">
+        <path d="M4,4L8,8" style="fill:none;fill-rule:nonzero;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <path d="M5,8L8,8L8,5" style="fill:none;fill-rule:nonzero;stroke:#333333;stroke-width:2px;"/>
+    <g transform="matrix(1,0,0,1,-0.193798,-0.629845)">
+        <circle cx="22" cy="22" r="1" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <g transform="matrix(1,0,0,1,-2.42248,-0.775194)">
+        <circle cx="17" cy="22" r="1" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <g transform="matrix(1,0,0,1,-0.0968992,-2.56783)">
+        <circle cx="22" cy="17" r="1" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <g transform="matrix(1,0,0,1,0.0968992,-4.06977)">
+        <circle cx="20" cy="14" r="1" style="fill:none;stroke:#333333;stroke-width:2px;"/>
+    </g>
+    <path d="M20,20L16,16" style="fill:none;fill-rule:nonzero;stroke:#333333;stroke-width:2px;"/>
+    <path d="M19,16L16,16L16,19" style="fill:none;fill-rule:nonzero;stroke:#333333;stroke-width:2px;"/>
+</svg>

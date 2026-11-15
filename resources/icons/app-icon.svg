@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1000 1000" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1.71759,0,0,1.71759,-275.58,-416.493)">
+        <path d="M730.62,321.499L730.62,745.685C730.62,782.65 700.609,812.661 663.643,812.661L239.457,812.661C202.492,812.661 172.481,782.65 172.481,745.685L172.481,321.499C172.481,284.533 202.492,254.522 239.457,254.522L663.643,254.522C700.609,254.522 730.62,284.533 730.62,321.499Z" style="fill:rgb(11,95,165);"/>
+    </g>
+    <g transform="matrix(6.06279,0,0,6.06279,-841.02,-1394.12)">
+        <g transform="matrix(50,0,0,50,286.081,329.457)">
+        </g>
+        <text x="155.808px" y="329.457px" style="font-family:'AbadiMT-ExtraBold', sans-serif;font-size:50px;fill:white;">SMCP</text>
+    </g>
+</svg>

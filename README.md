@@ -15,12 +15,15 @@ Projector-Camera Calibration* by Daniel Moreno and Gabriel Taubin (3DimPVT 2012,
 - Decode projector correspondences and calibrate the camera-projector pair.
 - Reconstruct colored point clouds and inspect them in the integrated OpenGL viewer.
 - Export reconstructed data as PLY or XYZ.
-- Edit XYZ point clouds by removing statistical outliers and fitting RANSAC planes or
-  spheres.
+- Edit XYZ point clouds in the Point Cloud Editor: remove statistical outliers, fit RANSAC
+  planes or spheres, align centroids, register clouds with ICP, merge them, and rotate, move,
+  select, or delete points by hand, with undo and redo.
+- Measure sphere artifacts against reference values (diameters and center distances), with an
+  optional scale correction, and export the results to CSV or Excel.
 - Optionally denoise point clouds with AI models (Score Denoise, StraightPCF, and
-  PointCleanNet) running in WSL.
+  PointCleanNet) running in WSL, and train or apply a compensation model.
 - Compare, recolor, rename, reorder, hide, delete, and export point clouds in the editor,
-  either one per file or combined into one file.
+  either one per file or combined into one file, and save the whole session as a project.
 
 ## Requirements
 
@@ -69,10 +72,13 @@ IDE setup, clean builds, troubleshooting, and Release distribution instructions.
 3. Capture several Gray-code sets with the chessboard in different poses.
 4. Run **Decode**, **Extract Corners**, and **Calibrate**.
 5. Run **Reconstruct** to generate and display a point cloud.
-6. Open **Point Cloud**, click **Load** for each XYZ file to compare, and remove outliers,
-   fit planes and spheres, or run an optional AI model on the first cloud of the list.
-7. In the editor, click **Export** to write the first cloud, one XYZ file per cloud, or all
-   visible clouds combined. Edited row names are used as filenames.
+6. Open **Point Cloud**, add each XYZ file with **+** in the Point Clouds panel, and select
+   the clouds to work on. The **PointCloud**, **Fit**, and **Measure** menus remove outliers,
+   register clouds, fit planes and spheres, measure sphere artifacts, or run an optional AI
+   model on every selected cloud.
+7. In the editor, use the export button of the Point Clouds panel to write the selected cloud,
+   one XYZ file per selected cloud, or the selected visible clouds combined. Edited row names
+   are used as filenames.
 
 For detailed operating instructions and file formats, read the
 [User Guide](docs/USER_GUIDE.md).
@@ -89,8 +95,9 @@ scripts-wsl/                   Optional WSL setup, AI model registry, smcp launc
 src/ai/                        Asynchronous bridge to the AI models in WSL
 src/app/                       Application entry point and main window
 src/core/                      Algorithms, data objects, and shared utilities
+src/common/                    Settings keys, literals, and Qt/OpenCV conversions
 src/camera/                    Optional Spinnaker camera integration
-src/export/                    PLY and XYZ input/output
+src/export/                    PLY and XYZ input/output, and Excel reports
 src/ui/                        Qt dialogs with Designer forms
 src/ui/models/                 Qt item models
 src/ui/pointcloud_editor/      Point-cloud editor and parameter dialogs
@@ -114,9 +121,14 @@ the required Qt plugins, OpenCV DLLs, and optional Spinnaker DLL next to `SMCP.e
 .\scripts\package-release.ps1
 ```
 
+The version is defined once, in `project(SMCP VERSION ...)` of `CMakeLists.txt`; the About
+window (**Help > About...**) and the package name both take it from there.
+
 This builds Release and writes `dist/SMCP-<version>-win64.zip`, a self-contained folder
 that also carries the Visual C++ runtime, the license, and the user documentation. Test
-executables are left out. Share or upload that archive; when copying files by hand, copy the
+executables and developer tools are left out. `.\scripts\package-release.ps1 -NoCamera` writes
+`dist/SMCP-<version>-win64-nocamera.zip`, a variant without camera support for computers that
+only process existing captures. Share or upload those archives; when copying files by hand, copy the
 complete `build/ninja-release/bin` directory and not only the executable. Direct camera
 capture on the target computer additionally requires compatible camera drivers, and the
 optional AI models require the WSL setup described in the quick start.

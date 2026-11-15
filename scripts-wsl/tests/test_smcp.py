@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.machinery
+import io
 import importlib.util
 import json
 import os
@@ -35,12 +37,12 @@ class SmcpCliTests(unittest.TestCase):
 
         source_registry = json.loads((SCRIPT.parent / "models.json").read_text(encoding="utf-8"))
         self.registry.write_text(json.dumps(source_registry), encoding="utf-8")
-        for model in source_registry["models"]:
+        for model in [*source_registry["models"], *source_registry["trainers"]]:
             environment_python = self.conda.parent.parent / "envs" / model["environment"] / "bin/python"
             environment_python.parent.mkdir(parents=True)
             environment_python.touch()
             directory = self.models / model["directory"]
-            for relative in [model["runner"], *model["required_files"]]:
+            for relative in [model["runner"], *model.get("required_files", [])]:
                 path = directory / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.touch()
@@ -94,6 +96,97 @@ class SmcpCliTests(unittest.TestCase):
         self.assertIn("--niters", command)
         self.assertEqual(command[command.index("--niters") + 1], "4")
         self.assertEqual(command[command.index("--cluster-size") + 1], "5000")
+
+    def test_registry_exposes_the_compensation_trainers(self):
+        trainers, errors = smcp.load_trainers()
+        self.assertEqual(errors, [])
+        self.assertEqual(set(trainers), {"pinn-smcp"})
+        self.assertIn("epochs", trainers["pinn-smcp"]["configuration"])
+        self.assertEqual(trainers["pinn-smcp"]["environment"], "model-pinn-smcp")
+
+    def test_shipped_registry_matches_the_default_trainers(self):
+        document = json.loads((SCRIPT.parent / "models.json").read_text(encoding="utf-8"))
+        self.assertEqual(document["trainers"], smcp.DEFAULT_TRAINERS)
+
+    def run_main(self, *arguments):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "argv", ["smcp", *arguments]), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            try:
+                code = smcp.main()
+            except SystemExit as exit_request:
+                code = exit_request.code
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_older_registry_gains_shipped_trainers_unless_it_disables_them(self):
+        document = json.loads(self.registry.read_text(encoding="utf-8"))
+        document["trainers"] = []
+        self.registry.write_text(json.dumps(document), encoding="utf-8")
+        trainers, errors = smcp.load_trainers()
+        self.assertEqual(errors, [])
+        self.assertEqual(set(trainers), {"pinn-smcp"})
+        document["trainers"] = [{**smcp.DEFAULT_TRAINERS[0], "enabled": False}]
+        self.registry.write_text(json.dumps(document), encoding="utf-8")
+        trainers, errors = smcp.load_trainers()
+        self.assertEqual(errors, [])
+        self.assertEqual(set(trainers), set())
+
+    def test_list_trainers_json_exposes_the_configuration(self):
+        code, stdout, _ = self.run_main("--list-trainers", "--json")
+        self.assertEqual(code, 0)
+        trainers = {entry["id"]: entry for entry in json.loads(stdout)["trainers"]}
+        self.assertEqual(set(trainers), {"pinn-smcp"})
+        self.assertIn("epochs", trainers["pinn-smcp"]["configuration"])
+        self.assertIn("epochs", trainers["pinn-smcp"]["configuration_schema"])
+
+    def edit_trainer(self, trainer_id, **changes):
+        document = json.loads(self.registry.read_text(encoding="utf-8"))
+        for trainer in document["trainers"]:
+            if trainer["id"] == trainer_id:
+                trainer.update(changes)
+        self.registry.write_text(json.dumps(document), encoding="utf-8")
+
+    def test_trainer_reports_a_missing_runner_file(self):
+        (self.models / "pinn-smcp" / "train_pinn_smcp.py").unlink()
+        trainers, errors = smcp.load_trainers()
+        self.assertNotIn("pinn-smcp", trainers)
+        self.assertTrue(any("train_pinn_smcp.py" in error for error in errors), errors)
+
+    def test_registry_without_trainers_uses_the_shipped_trainer(self):
+        document = json.loads(self.registry.read_text(encoding="utf-8"))
+        del document["trainers"]
+        self.registry.write_text(json.dumps(document), encoding="utf-8")
+        trainers, errors = smcp.load_trainers()
+        self.assertEqual(errors, [])
+        self.assertEqual(set(trainers), {"pinn-smcp"})
+
+    def test_training_passes_dataset_output_calibration_and_configuration(self):
+        dataset = self.root / "dataset"
+        dataset.mkdir()
+        (dataset / "manifest.json").write_text("{}", encoding="utf-8")
+        calibration = self.root / "calibration.yml"
+        calibration.write_text("%YAML:1.0\n", encoding="utf-8")
+        config_path = self.root / "config.json"
+        config_path.write_text('{"epochs": 10, "device": "cpu"}', encoding="utf-8")
+        completed = subprocess.CompletedProcess([], 0)
+        with mock.patch.object(sys, "argv", [
+            "smcp", "--train", "pinn-smcp", "--dataset", str(dataset), "--output", str(self.root / "model"),
+            "--calibration", str(calibration), "--config-json", str(config_path),
+        ]), mock.patch.object(smcp.subprocess, "run", return_value=completed) as run:
+            self.assertEqual(smcp.main(), 0)
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index("--dataset") + 1], str(dataset.resolve()))
+        self.assertEqual(command[command.index("--output") + 1], str((self.root / "model.json").resolve()))
+        self.assertEqual(command[command.index("--calibration") + 1], str(calibration.resolve()))
+        self.assertEqual(command[command.index("--epochs") + 1], "10")
+        self.assertIn("model-pinn-smcp", command)
+
+    def test_training_requires_a_manifest(self):
+        with mock.patch.object(sys, "argv", [
+            "smcp", "--train", "pinn-smcp", "--dataset", str(self.root), "--output", str(self.root / "model.json"),
+        ]), mock.patch.object(smcp.subprocess, "run") as run:
+            self.assertEqual(smcp.main(), 2)
+        run.assert_not_called()
 
     def test_disabled_model_does_not_require_artifacts(self):
         document = json.loads(self.registry.read_text(encoding="utf-8"))

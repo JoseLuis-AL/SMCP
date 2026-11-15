@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SphereResultsDialog</class>
+ <widget class="QDialog" name="SphereResultsDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1160</width>
+    <height>640</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Sphere Measurements</string>
+  </property>
+  <property name="modal">
+   <bool>true</bool>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="header_layout">
+     <item>
+      <widget class="QLabel" name="summary_label">
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+       <property name="textFormat">
+        <enum>Qt::PlainText</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="after_scale_check">
+       <property name="text">
+        <string>Show scale correction (k)</string>
+       </property>
+       <property name="toolTip">
+        <string>Show the scale-corrected values and error summary alongside the originals. The clouds and original CSV measurements are unchanged.</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="show_mm_check">
+       <property name="text">
+        <string>Show values in mm</string>
+       </property>
+       <property name="toolTip">
+        <string>Applies to all dimensional values in this window and the CSV export. Training data keeps its original units.</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="results_table">
+     <property name="editTriggers">
+      <set>QAbstractItemView::NoEditTriggers</set>
+     </property>
+     <property name="selectionBehavior">
+      <enum>QAbstractItemView::SelectRows</enum>
+     </property>
+     <property name="alternatingRowColors">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="analysis_layout">
+     <item>
+      <widget class="QGroupBox" name="errors_group">
+       <property name="title">
+        <string>Error summary</string>
+       </property>
+       <layout class="QVBoxLayout" name="errors_layout">
+        <item>
+         <widget class="QTableWidget" name="summary_table">
+          <property name="editTriggers">
+           <set>QAbstractItemView::NoEditTriggers</set>
+          </property>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::NoSelection</enum>
+          </property>
+          <property name="alternatingRowColors">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="observations_group">
+       <property name="title">
+        <string>Observations</string>
+       </property>
+       <layout class="QVBoxLayout" name="observations_layout">
+        <item>
+         <widget class="QLabel" name="validation_label">
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+          <property name="textFormat">
+           <enum>Qt::PlainText</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="coverage_label">
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+          <property name="textFormat">
+           <enum>Qt::PlainText</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="note_label">
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+          <property name="textFormat">
+           <enum>Qt::PlainText</enum>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="status_label">
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="textFormat">
+      <enum>Qt::PlainText</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <widget class="QPushButton" name="export_csv_button">
+       <property name="toolTip">
+        <string>Original measurements, centers and errors in the selected display unit, one row per scan</string>
+       </property>
+       <property name="text">
+        <string>Export CSV...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="export_excel_button">
+       <property name="toolTip">
+        <string>Export the displayed measurements, error summary and observations to an Excel workbook, using the selected units and scale correction visibility</string>
+       </property>
+       <property name="text">
+        <string>Export Excel...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="centers_button">
+       <property name="toolTip">
+        <string>Add the sphere centers of every scan to the viewer as a layer, to see which part of the volume the campaign covers</string>
+       </property>
+       <property name="text">
+        <string>Show Centers</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="export_training_button">
+       <property name="toolTip">
+        <string>The points of every fitted sphere with its label, plus manifest.json, for training a compensation model</string>
+       </property>
+       <property name="text">
+        <string>Export Training Data...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="close_button">
+       <property name="text">
+        <string>Close</string>
+       </property>
+       <property name="default">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources />
+ <connections />
+</ui>

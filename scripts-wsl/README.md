@@ -6,8 +6,8 @@ Run the complete setup from Ubuntu 22.04:
 bash scripts-wsl/setup.sh
 ```
 
-The scripts install Miniconda, create the three isolated model environments,
-install the `smcp` launcher and editable `~/smcp-models/models.json` registry,
+The scripts install Miniconda, create the isolated model and trainer environments,
+install the `smcp` launcher, the trainers, and the editable `~/smcp-models/models.json` registry,
 and verify the Python/CUDA stack. They are safe to
 run again: existing installations and environments are preserved unless
 `--recreate` is explicitly supplied.
@@ -18,7 +18,13 @@ requirements, model-artifact placement, usage, and troubleshooting.
 Run `smcp --list-models --json`, `smcp --describe-model MODEL --json`, or
 `smcp --validate-registry --json` to inspect the same contract used by the
 Windows application. Per-run parameter overrides are supplied with
-`--config-json FILE`.
+`--config-json FILE`. `smcp --list-trainers --json` and
+`smcp --train pinn-smcp --dataset DIR --output FILE.json` train the SMCP compensation; see the
+quick start.
 
-Re-run `bash scripts-wsl/install-smcp-cli.sh` after updating SMCP. The launcher tests run
-with `python3 -m unittest discover -s scripts-wsl/tests -p "test_*.py"`.
+## Trainers
+
+`smcp --list-trainers --json` reports every trainer with its configuration and schema. A trainer
+entry of the registry may set `output_extension` (default `.json`; the trained model path passed
+to `--output` gets it). Trainers shipped with SMCP that an existing `~/smcp-models/models.json`
+does not list are added automatically; list one with `"enabled": false` to hide it.

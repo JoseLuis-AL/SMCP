@@ -1,6 +1,5 @@
 /*
 Copyright (c) 2012, Daniel Moreno and Gabriel Taubin
-Copyright (c) 2024, José Luis Aguilera Luzania, Agustín Brau Ávila & Octavio Icasio Hernández
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,16 +25,22 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+
 #pragma once
+
+// Gray-code structured light: image loading, direct/global light estimation and decoding.
+//
+// DecodeGraySet() is the whole decoding stage for one capture set. It loads every image once (in
+// parallel), then decodes row ranges in parallel. Pixels are independent, so the result is
+// bit-identical to the serial algorithm of Moreno & Taubin that it replaces.
+
+#include <cmath>
+#include <string>
+#include <vector>
+
 #include <opencv2/core/core.hpp>
 
-#ifndef _MSC_VER
-#  ifndef _isnan
-#    include <math.h>
-#    define _isnan std::isnan
-#  endif
-#endif
-
+#include "core/Progress.h"
 
 namespace smcp
 {
@@ -46,20 +51,70 @@ namespace StructuredLight
     extern const float Pixel_Uncertain;
     extern const unsigned short Bit_Uncertain;
 
-    bool DecodePattern(const std::vector<std::string> & images, cv::Mat & patternImage, cv::Mat & minMaxImage, cv::Size const& projectorSize,
-                        unsigned flags = SimpleDecode, const cv::Mat & directLight = cv::Mat(), unsigned m = 5);
+    /// Robust decoding parameters (Moreno & Taubin): b is a ratio in [0, 1), m a number of levels.
+    struct DecodeParams
+    {
+        float b = 0.5f;
+        unsigned m = 5;
+
+        bool operator==(const DecodeParams & other) const {return b==other.b && m==other.m;}
+    };
+
+    /// Result of decoding one capture set.
+    struct DecodedSet
+    {
+        cv::Mat pattern;  ///< CV_32FC2: projector column and row seen by each camera pixel (NaN = uncertain).
+        cv::Mat minMax;   ///< CV_8UC2: minimum and maximum intensity of each camera pixel over the sequence.
+    };
+
+    /// Loads an image as 8-bit gray (BGR decode + BGR2GRAY, like the capture pipeline has always done).
+    /// The file is read through a UTF-8 path, so folders with accents work. Empty Mat on failure.
+    cv::Mat GetGrayImage(const std::string & filename);
+    /// Same decoding as GetGrayImage but keeps the BGR image.
+    cv::Mat GetColorImage(const std::string & filename);
+
+    /// Decodes a complete Gray-code capture set (2 + 4*bits images, in capture order) with the robust
+    /// pixel classification. Returns false and fills `error` when the set cannot be decoded; `progress`
+    /// may be null.
+    bool DecodeGraySet(const std::vector<std::string> & images, cv::Size const& projectorSize, const DecodeParams & params,
+                        DecodedSet & decoded, std::string & error, ProgressSink * progress = nullptr);
+
+    /// Decodes already loaded gray images (indexed like the capture set; entries 0 and 1 are not used).
+    bool DecodePattern(const std::vector<cv::Mat> & grayImages, cv::Mat & patternImage, cv::Mat & minMaxImage, cv::Size const& projectorSize,
+                        unsigned flags, const cv::Mat & directLight, unsigned m, std::string & error);
     unsigned short GetRobustBit(unsigned value1, unsigned value2, unsigned Ld, unsigned Lg, unsigned m);
-    void ConvertPattern(cv::Mat & patternImage, cv::Size const& projectorSize, const int offset[2], bool binary);
+
+    /// Loads the gray images of a capture set that the decoding uses (entries 0 and 1 stay empty),
+    /// each one once and in parallel. Returns false and fills `error` when one cannot be read.
+    bool LoadGraySet(const std::vector<std::string> & images, std::vector<cv::Mat> & grayImages, std::string & error,
+                        ProgressSink * progress = nullptr);
+
+    /// Sub-pixel projector coordinates for the sub-pixel reconstruction (the classic one does not
+    /// use them). `patternImage` holds whole projector columns and rows; here every camera pixel
+    /// gets a fractional column and row, in the same coordinates (a whole number is the centre of
+    /// that projector pixel), as a CV_32FC2 image with NaN where no value can be given.
+    ///
+    /// Along a camera row the decoded column is constant over a few pixels and then steps by one.
+    /// A step is the border between two projector columns, that is, a half-integer coordinate, and
+    /// it is located between the two camera pixels where the stripe image of the Gray bit that
+    /// changes there crosses its inverse (linear interpolation of their difference). Between two
+    /// consecutive borders the coordinate is interpolated linearly, which assumes a smooth surface
+    /// across one projector pixel. A run with a border on one side only continues the slope of the
+    /// neighbouring run; a run with no border, or bounded by a jump or by pixels that are uncertain
+    /// or below `threshold`, gets no value. Rows of the projector are treated the same way along
+    /// camera columns.
+    ///
+    /// `grayImages` are the images of the set as LoadGraySet returns them. When the vector is empty
+    /// (a decoded dump without its images) every border is placed halfway between its two pixels.
+    cv::Mat RefinePattern(const std::vector<cv::Mat> & grayImages, const cv::Mat & patternImage, const cv::Mat & minMaxImage,
+                        cv::Size const& projectorSize, int threshold, ProgressSink * progress = nullptr);
     cv::Mat EstimateDirectLight(const std::vector<cv::Mat> & images, float b);
 
-    cv::Mat GetGrayImage(const std::string & filename);
-    static inline bool Invalid(float value) {return _isnan(value)>0;}
-    static inline bool Invalid(const cv::Vec2f & pt) {return _isnan(pt[0]) || _isnan(pt[1]);}
-    static inline bool Invalid(const cv::Vec3f & pt) {return _isnan(pt[0]) || _isnan(pt[1]) || _isnan(pt[2]);}
+    static inline bool Invalid(float value) {return std::isnan(value);}
+    static inline bool Invalid(const cv::Vec2f & pt) {return std::isnan(pt[0]) || std::isnan(pt[1]);}
+    static inline bool Invalid(const cv::Vec3f & pt) {return std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2]);}
 
     int BinaryToGray(int value);
-    inline int BinaryToGray(int value, unsigned offset);
-    inline int GrayToBinary(int value, unsigned offset);
 
     cv::Mat ColorizePattern(const cv::Mat & patternImage, unsigned set, float maxValue);
 };

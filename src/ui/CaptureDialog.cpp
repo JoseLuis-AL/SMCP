@@ -4,6 +4,7 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QDateTime>
+#include <QDir>
 #include <QDebug>
 #include <QScreen>
 

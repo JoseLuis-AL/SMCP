@@ -27,18 +27,35 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ui/AboutDialog.h"
 
+#include <QPixmap>
+
 #include <opencv2/core/core.hpp>
+
+// The version comes from project(SMCP VERSION ...) in CMakeLists.txt.
+#ifndef SMCP_VERSION
+#define SMCP_VERSION "0.0.0"
+#endif
 
 namespace smcp
 {
 
-AboutDialog::AboutDialog(QWidget * parent, Qt::WindowFlags flags): 
+AboutDialog::AboutDialog(QWidget * parent, Qt::WindowFlags flags):
     QDialog(parent, flags)
 {
     Q_INIT_RESOURCE(resources);
 
     setupUi(this);
 
+    // The logo is scaled once, smoothly, at the resolution of the screen.
+    const qreal ratio = devicePixelRatioF();
+    QPixmap logo(":/unison.png");
+    logo = logo.scaled(logo_label->maximumSize() * ratio, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    logo.setDevicePixelRatio(ratio);
+    logo_label->setPixmap(logo);
+
+    version_label->setText(QStringLiteral("v%1").arg(QStringLiteral(SMCP_VERSION)));
+    url_label->setText(QStringLiteral("<a href=\"https://github.com/JoseLuis-AL/SMCP\" "
+        "style=\"color:#0067c0; text-decoration:none;\">github.com/JoseLuis-AL/SMCP</a>"));
     qt_version_label->setText(qVersion());
     opencv_version_label->setText(CV_VERSION);
     built_date_label->setText(QString("%1 %2").arg(__DATE__, __TIME__));

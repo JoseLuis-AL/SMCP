@@ -9,9 +9,9 @@
 | `smcp` launcher | System `python3` `3.10.12` | Uses only the standard library; independent of Conda |
 | GPU | NVIDIA GeForce RTX 4050 Laptop GPU, 6 GB | Windows driver `610.88` in the validated machine |
 | PyTorch / CUDA runtime | PyTorch `2.8.0+cu128`; CUDA `12.8` | CUDA is supplied through the PyTorch wheel |
-| Numerical stack | NumPy `1.26.4`, SciPy `1.17.1`, scikit-learn `1.9.1` | Later compatible solver builds may be selected |
-| Conda environments | `model-score-denoise`, `model-straightPCF`, `pointcleannet` | One isolated environment per model |
-| Model root | `~/smcp-models` | Contains `score-denoise`, `straightPCF`, and `pointcleannet` |
+| Numerical stack | NumPy `1.26.4`, SciPy `1.17.1`, scikit-learn `1.9.1` (denoising models) | Later compatible solver builds may be selected |
+| Conda environments | `model-score-denoise`, `model-straightPCF`, `pointcleannet`, `model-pinn-smcp` | One isolated environment per model or trainer |
+| Model root | `~/smcp-models` | Contains `score-denoise`, `straightPCF`, `pointcleannet`, and the trainer `pinn-smcp` |
 | Model registry | `~/smcp-models/models.json` | Editable defaults, schemas, environments, runners, and output suffixes |
 
 This guide recreates the WSL and conda side of the SMCP AI module. The setup is
@@ -52,7 +52,7 @@ exec bash
 Replace `/mnt/c/path/to/SMCP-CPP` with the actual repository path. The setup:
 
 1. Installs Miniconda into `~/miniconda3` if it is absent.
-2. Creates `~/smcp-models` and the three conda environments.
+2. Creates `~/smcp-models` and the five conda environments (three models, two trainers).
 3. Installs the shared `smcp` launcher into `~/.local/bin` and creates
    `~/smcp-models/models.json` if it does not exist.
 4. Checks Python, PyTorch, CUDA visibility, and the GPU.
@@ -161,8 +161,8 @@ explorer.exe "$(wslpath -w ~/output)"
 ### Run models from SMCP
 
 When the Point Cloud Editor opens, SMCP lists the models returned by
-`smcp --list-models --json` in its **AI Model** selector, which stays disabled if none is
-available. The selected model runs on the first point cloud of the overlay while a
+`smcp --list-models --json` in its **PointCloud > AI Models** submenu, which stays disabled if
+none is available. The chosen model runs on every selected cloud, one after another, while a
 *Thinking...* window shows the elapsed time; see the [User guide](USER_GUIDE.md#run-an-ai-model).
 
 SMCP passes `--job-id` to every inference. With a job identifier the launcher runs the model
@@ -176,27 +176,80 @@ under a supervisor in its own Linux session:
 Running jobs are registered in `/tmp/smcp-jobs`. The directory is empty when no inference is
 running.
 
+## Train the SMCP compensation (PINN)
+
+Besides the point-cloud models, the launcher runs **trainers**. The `pinn-smcp` trainer fits a
+physics-informed correction of the SMCP reconstruction from sphere measurements:
+
+1. In SMCP, measure a campaign of the reference artifact with **Measure Spheres** and click
+   **Export Training Data** (see the [User guide](USER_GUIDE.md#measure-reference-spheres)). Use raw
+   reconstructions in the camera frame, captured in many positions that cover the volume.
+2. In Ubuntu, train on that folder. Windows paths are available under `/mnt/c/...`:
+
+   ```bash
+   smcp --list-trainers --json
+   smcp --train pinn-smcp --dataset /mnt/c/path/to/training-data         --output /mnt/c/path/to/compensation.json         --calibration /mnt/c/path/to/calibration.yml
+   ```
+
+   `--calibration` is optional: the trainer stores its SHA-256 so the correction can later be
+   refused for scans reconstructed with a different calibration. Override the defaults
+   (`folds`, `epochs`, `hidden`, `points_per_sphere`, `learning_rate`, `physics_learning_rate`,
+   `regularization`, `smoothness`, `output_bound_mm`, `seed`, `device`) with `--config-json FILE`.
+
+The model is `p' = p * (1 + s) + r`: a six-coefficient physical block `s` that moves each point
+along its camera ray (global scale, its variation with depth, residual radial distortion, and
+their coupling) plus a small network `r` bounded to ±`output_bound_mm` per axis, regularized and
+smoothed, and limited to the volume covered by the training spheres. The loss compares the
+diameters and center distances of the spheres refitted on the corrected points with the CMM
+values. The global scale starts at the fixed scale correction.
+
+The trainer prints, per fold, the error of each held-out scan under three corrections: the fixed
+scale, the physical block alone, and the full PINN. Only these cross-validated numbers estimate
+the error on new scans; the in-sample numbers stored in the output are optimistic. The output
+JSON holds the coefficients, the network weights, the covered volume, the fixed scale, and the
+validation summary, plus test points that SMCP uses to verify it reproduces the model exactly.
+Apply it in SMCP to reconstructions, editor layers, or a measured campaign; see
+[Compensate reconstructions](USER_GUIDE.md#compensate-reconstructions).
+
+A scan does not need to show every sphere of the artifact. A long artifact measured in parts
+can be trained as one: describe all its spheres and known distances in the manifest, and each
+scan contributes the diameters and distances of the spheres it has.
+
+The default is 400 epochs. With the ten scans available when it was chosen, longer training
+fitted the training scans better (80 um with 1500 epochs) but the scans left out of it worse
+(169 um, the same as the fixed scale, against 148 um with 400 epochs). Check the cross-validation
+line of the log again when more scans are available.
+
+To check the installation, run the synthetic self-test, which injects a known distortion and
+verifies that the global scale is recovered and that the PINN beats the fixed scale on unseen
+scans (about two minutes on the CPU):
+
+```bash
+~/miniconda3/envs/model-pinn-smcp/bin/python ~/smcp-models/pinn-smcp/train_pinn_smcp.py --self-test --epochs 600
+```
+
 ## Script reference
 
 | Script | Purpose |
 | --- | --- |
 | `scripts-wsl/setup.sh` | Runs the complete setup in the correct order |
 | `scripts-wsl/install-conda.sh` | Installs Miniconda and initializes bash |
-| `scripts-wsl/create-model-envs.sh` | Creates or deliberately recreates all model environments |
-| `scripts-wsl/install-smcp-cli.sh` | Installs the shared launcher in `~/.local/bin` |
+| `scripts-wsl/create-model-envs.sh` | Creates or deliberately recreates all model and trainer environments |
+| `scripts-wsl/install-smcp-cli.sh` | Installs the shared launcher in `~/.local/bin` and the trainers in `~/smcp-models` |
 | `scripts-wsl/verify.sh` | Checks WSL, conda, Python dependencies, CUDA, GPU, CLI, and model directories |
 
-To discard and fully rebuild only the three named model environments:
+To discard and fully rebuild only the named model and trainer environments:
 
 ```bash
 bash scripts-wsl/create-model-envs.sh --recreate
 ```
 
-`--recreate` removes `model-score-denoise`, `model-straightPCF`, and
-`pointcleannet`; it does not remove Miniconda, model files, inputs, or outputs.
+`--recreate` removes `model-score-denoise`, `model-straightPCF`, `pointcleannet`, and
+`model-pinn-smcp`; it does not remove Miniconda, model files, inputs, or outputs.
 
 Re-running `install-smcp-cli.sh` updates the CLI but deliberately preserves an
-existing `models.json`, including user-tuned defaults. Compare it with
+existing `models.json`, including user-tuned defaults (a registry without a `trainers` array
+uses the trainers shipped with the launcher). Trainer scripts are always updated. Compare it with
 `scripts-wsl/models.json` manually when upgrading the registry schema.
 Re-run it after every SMCP update so `~/.local/bin/smcp` matches the application; for
 example, job supervision and automatic cleanup require the launcher from version 3.0.2:
@@ -207,7 +260,8 @@ bash scripts-wsl/install-smcp-cli.sh
 
 Environment creation uses `conda-forge` plus `nodefaults`, then installs the
 CUDA 12.8 PyTorch wheels from PyTorch and the matching `torch-cluster` wheel
-from PyG. StraightPCF additionally receives `torch-geometric`.
+from PyG. StraightPCF additionally receives `torch-geometric`. The `model-pinn-smcp` trainer
+environment only needs NumPy and the CPU build of PyTorch.
 
 ## Manual environment inspection
 
@@ -224,6 +278,17 @@ Use `conda run` when you want to test an environment without activating it:
 ```
 
 ## Troubleshooting
+
+### `CondaToSNonInteractiveError` while creating an environment
+
+Recent conda versions refuse to create environments while the Terms of Service of the Anaconda
+default channels (`repo.anaconda.com/pkgs/main` and `pkgs/r`) have not been accepted. The
+`model-pinn-smcp` trainer environment avoids those channels: `create-model-envs.sh`
+creates it with `--override-channels` from conda-forge only (PyTorch for the PINN trainer is
+installed with pip). For the other model
+environments, either review and accept those terms yourself with the `conda tos accept` commands
+that the error prints, or remove the default channels from your conda configuration
+(`conda config --remove channels defaults`) so only conda-forge is used.
 
 ### `smcp: command not found`
 

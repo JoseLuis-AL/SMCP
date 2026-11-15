@@ -1,0 +1,13 @@
+{
+  "name": "Example three-sphere artifact (replace with the CMM report values)",
+  "spheres": [
+    { "name": "A", "diameter": 100.0000 },
+    { "name": "B", "diameter": 100.0000 },
+    { "name": "C", "diameter": 100.0000 }
+  ],
+  "distances": [
+    { "from": "A", "to": "B", "value": 250.0000 },
+    { "from": "A", "to": "C", "value": 200.0000 },
+    { "from": "B", "to": "C", "value": 180.0000 }
+  ]
+}

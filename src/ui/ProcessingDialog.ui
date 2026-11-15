@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>666</width>
-    <height>325</height>
+    <height>400</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -33,41 +33,77 @@
     <number>9</number>
    </property>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_2">
-     <item>
-      <widget class="QLabel" name="progress_label">
-       <property name="text">
-        <string>Progress</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QProgressBar" name="progress_bar">
-       <property name="value">
-        <number>24</number>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <widget class="QLabel" name="current_message_label">
-     <property name="text">
-      <string>message</string>
+    <widget class="QGroupBox" name="progress_group">
+     <property name="title">
+      <string>Progress</string>
      </property>
+     <layout class="QVBoxLayout" name="progress_layout">
+      <item>
+       <widget class="QLabel" name="current_message_label">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="bar_layout">
+        <property name="spacing">
+         <number>9</number>
+        </property>
+        <item>
+         <widget class="QProgressBar" name="progress_bar">
+          <property name="value">
+           <number>0</number>
+          </property>
+          <property name="textVisible">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="percent_label">
+          <property name="minimumSize">
+           <size>
+            <width>36</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <widget class="QTextEdit" name="message_text">
-     <property name="readOnly">
-      <bool>true</bool>
+    <widget class="QGroupBox" name="details_group">
+     <property name="title">
+      <string>Details</string>
      </property>
+     <layout class="QVBoxLayout" name="details_layout">
+      <item>
+       <widget class="QTextEdit" name="message_text">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout">
+    <layout class="QHBoxLayout" name="button_layout">
      <item>
-      <spacer name="horizontalSpacer">
+      <spacer name="left_button_spacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
        </property>
@@ -81,10 +117,29 @@
      </item>
      <item>
       <widget class="QPushButton" name="close_cancel_button">
+       <property name="minimumSize">
+        <size>
+         <width>88</width>
+         <height>0</height>
+        </size>
+       </property>
        <property name="text">
         <string>Close</string>
        </property>
       </widget>
+     </item>
+     <item>
+      <spacer name="right_button_spacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
      </item>
     </layout>
    </item>

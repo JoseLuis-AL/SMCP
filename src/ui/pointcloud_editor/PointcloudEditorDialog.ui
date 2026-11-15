@@ -6,12 +6,12 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>909</width>
+    <width>922</width>
     <height>646</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Point Cloud Editor</string>
+   <string>Point Cloud Editor[*]</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="spacing">
@@ -30,201 +30,509 @@
     <number>9</number>
    </property>
    <item>
-    <layout class="QHBoxLayout" name="pointcloud_layout">
-     <item>
-      <widget class="QLabel" name="pointcloud_label">
-       <property name="text">
-        <string>Point Cloud:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="pointcloud_combo">
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-       <property name="toolTip">
-        <string>.xyz files in the working directory</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QToolButton" name="load_pointcloud_button">
-       <property name="toolTip">
-        <string>Add the selected point cloud to the editor</string>
-       </property>
-       <property name="text">
-        <string>Load</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../../../resources/resources.qrc">
-         <normaloff>:/load-pointcloud-icon.svg</normaloff>:/load-pointcloud-icon.svg</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>15</width>
-         <height>15</height>
-        </size>
-       </property>
-       <property name="toolButtonStyle">
-        <enum>Qt::ToolButtonTextBesideIcon</enum>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="processing_layout">
-     <item>
-      <widget class="QLabel" name="processing_label">
-       <property name="text">
-        <string>Processing: </string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="fit_label">
-       <property name="text">
-        <string>Fit Figure</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="fit_model_combo">
-       <property name="minimumSize">
-        <size>
-         <width>120</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="toolTip">
-        <string>Geometric model to fit with RANSAC</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="ai_model_label">
-       <property name="text">
-        <string>AI Model:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="ai_model_combo">
-       <property name="minimumSize">
-        <size>
-         <width>120</width>
-         <height>0</height>
-        </size>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="processing_spacer">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="command_layout">
-     <item>
-      <widget class="QLabel" name="command_label">
-       <property name="text">
-        <string>Commands:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QToolButton" name="save_button">
-       <property name="toolTip">
-        <string>Export the first point cloud, each point cloud separately, or the visible ones combined</string>
-       </property>
-       <property name="text">
-        <string> Export</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../../../resources/resources.qrc">
-         <normaloff>:/icon-save.svg</normaloff>:/icon-save.svg</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>15</width>
-         <height>15</height>
-        </size>
-       </property>
-       <property name="toolButtonStyle">
-        <enum>Qt::ToolButtonTextBesideIcon</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QToolButton" name="remove_outliers_button">
-       <property name="toolTip">
-        <string>Configure and run Statistical Outlier Removal</string>
-       </property>
-       <property name="text">
-        <string> Remove Outliers</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../../../resources/resources.qrc">
-         <normaloff>:/remove-outlier-command-icon.svg</normaloff>:/remove-outlier-command-icon.svg</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>15</width>
-         <height>15</height>
-        </size>
-       </property>
-       <property name="toolButtonStyle">
-        <enum>Qt::ToolButtonTextBesideIcon</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="command_spacer">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <widget class="smcp::PointcloudPreviewWidget" name="preview_widget" native="true">
+    <widget class="QSplitter" name="view_splitter">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="childrenCollapsible">
+      <bool>false</bool>
+     </property>
+     <widget class="smcp::PointcloudLayersPanel" name="layers_panel" native="true" />
+     <widget class="QWidget" name="tools_panel" native="true">
+      <property name="minimumSize">
+       <size>
+        <width>64</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>64</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="tools_layout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="tools_title_label">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Tools</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QToolButton" name="select_button">
+         <property name="minimumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>Select points with a box: drag with the left button (Shift adds, Ctrl removes, a click clears); the middle button orbits</string>
+         </property>
+         <property name="accessibleName">
+          <string>Select points</string>
+         </property>
+         <property name="text">
+          <string> Select</string>
+         </property>
+         <property name="icon">
+          <iconset resource="../../../resources/resources.qrc">
+           <normaloff>:/square-dashed-mouse-pointer.svg</normaloff>:/square-dashed-mouse-pointer.svg</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>22</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <property name="toolButtonStyle">
+          <enum>Qt::ToolButtonIconOnly</enum>
+         </property>
+        </widget>
+       </item>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QToolButton" name="brush_select_button">
+         <property name="minimumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>Radial selection: paint with the left button; Ctrl + wheel changes the brush radius</string>
+         </property>
+         <property name="accessibleName">
+          <string>Radial selection</string>
+         </property>
+         <property name="text">
+          <string>Radial selection</string>
+         </property>
+         <property name="icon">
+          <iconset resource="../../../resources/resources.qrc">
+           <normaloff>:/circle-dashed.svg</normaloff>:/circle-dashed.svg</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>22</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <property name="toolButtonStyle">
+          <enum>Qt::ToolButtonIconOnly</enum>
+         </property>
+        </widget>
+       </item>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QToolButton" name="move_button">
+         <property name="minimumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>Show a move gizmo on the layer selected in the layer panel; drag its arrows, or its center, to move the cloud</string>
+         </property>
+         <property name="accessibleName">
+          <string>Move point clouds</string>
+         </property>
+         <property name="text">
+          <string> Move</string>
+         </property>
+         <property name="icon">
+          <iconset resource="../../../resources/resources.qrc">
+           <normaloff>:/move-3d.svg</normaloff>:/move-3d.svg</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>22</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <property name="toolButtonStyle">
+          <enum>Qt::ToolButtonIconOnly</enum>
+         </property>
+        </widget>
+       </item>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QToolButton" name="rotate_button">
+         <property name="minimumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>Show a rotation gizmo on the layer selected in the layer panel; drag its rings to align point clouds by hand</string>
+         </property>
+         <property name="accessibleName">
+          <string>Rotate point clouds</string>
+         </property>
+         <property name="text">
+          <string> Rotate</string>
+         </property>
+         <property name="icon">
+          <iconset resource="../../../resources/resources.qrc">
+           <normaloff>:/rotate-3d.svg</normaloff>:/rotate-3d.svg</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>22</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <property name="toolButtonStyle">
+          <enum>Qt::ToolButtonIconOnly</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="tools_separator">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QToolButton" name="delete_selection_button">
+         <property name="minimumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>36</width>
+           <height>36</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>Delete the selected points from their layers</string>
+         </property>
+         <property name="accessibleName">
+          <string>Delete selected points</string>
+         </property>
+         <property name="text">
+          <string> Delete Selected</string>
+         </property>
+         <property name="icon">
+          <iconset resource="../../../resources/resources.qrc">
+           <normaloff>:/square-dashed-x.svg</normaloff>:/square-dashed-x.svg</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>22</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="toolButtonStyle">
+          <enum>Qt::ToolButtonIconOnly</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="tools_spacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="preview_panel" native="true">
+      <layout class="QVBoxLayout" name="preview_layout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="smcp::PointcloudPreviewWidget" name="preview_widget" native="true" />
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="history_layout">
+         <item>
+          <widget class="QLabel" name="history_label">
+           <property name="text">
+            <string>History:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="history_spacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
    <item>
     <widget class="QLabel" name="status_label">
      <property name="text">
-      <string/>
+      <string />
      </property>
     </widget>
    </item>
   </layout>
+  <widget class="QMenuBar" name="editor_menu_bar">
+   <property name="nativeMenuBar">
+    <bool>false</bool>
+   </property>
+   <widget class="QMenu" name="project_file_menu">
+    <property name="title">
+     <string>&amp;File</string>
+    </property>
+    <addaction name="open_project_action" />
+    <addaction name="save_project_action" />
+    <addaction name="save_project_as_action" />
+   </widget>
+   <widget class="QMenu" name="pointcloud_menu">
+    <property name="title">
+     <string>PointCloud</string>
+    </property>
+    <property name="toolTipsVisible">
+     <bool>true</bool>
+    </property>
+    <widget class="QMenu" name="ai_models_menu">
+     <property name="title">
+      <string>AI Models</string>
+     </property>
+     <property name="toolTipsVisible">
+      <bool>true</bool>
+     </property>
+    </widget>
+    <addaction name="remove_outliers_action" />
+    <addaction name="align_centroids_action" />
+    <addaction name="register_action" />
+    <addaction name="separator" />
+    <addaction name="ai_models_menu" />
+   </widget>
+   <widget class="QMenu" name="fit_menu">
+    <property name="title">
+     <string>Fit</string>
+    </property>
+    <property name="toolTipsVisible">
+     <bool>true</bool>
+    </property>
+    <addaction name="fit_plane_action" />
+    <addaction name="fit_sphere_action" />
+   </widget>
+   <widget class="QMenu" name="measure_menu">
+    <property name="title">
+     <string>Measure</string>
+    </property>
+    <property name="toolTipsVisible">
+     <bool>true</bool>
+    </property>
+    <addaction name="measure_spheres_action" />
+    <addaction name="compensate_action" />
+   </widget>
+   <addaction name="project_file_menu" />
+   <addaction name="pointcloud_menu" />
+   <addaction name="fit_menu" />
+   <addaction name="measure_menu" />
+  </widget>
+  <action name="open_project_action">
+   <property name="text">
+    <string>Open Project...</string>
+   </property>
+   <property name="toolTip">
+    <string>Open editor project</string>
+   </property>
+   <property name="icon">
+    <iconset resource="../../../resources/resources.qrc">
+     <normaloff>:/folder-open.svg</normaloff>
+    </iconset>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="save_project_action">
+   <property name="text">
+    <string>Save Project</string>
+   </property>
+   <property name="toolTip">
+    <string>Save editor project</string>
+   </property>
+   <property name="icon">
+    <iconset resource="../../../resources/resources.qrc">
+     <normaloff>:/save.svg</normaloff>
+    </iconset>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="save_project_as_action">
+   <property name="text">
+    <string>Save Project As...</string>
+   </property>
+   <property name="toolTip">
+    <string>Save editor project to a new file</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+S</string>
+   </property>
+  </action>
+  <action name="remove_outliers_action">
+   <property name="text">
+    <string>Remove Outliers</string>
+   </property>
+   <property name="toolTip">
+    <string>Configure and run Statistical Outlier Removal</string>
+   </property>
+   <property name="icon">
+    <iconset resource="../../../resources/resources.qrc">
+     <normaloff>:/chart-quadrant.svg</normaloff>:/chart-quadrant.svg</iconset>
+   </property>
+  </action>
+  <action name="align_centroids_action">
+   <property name="text">
+    <string>Align Centroids</string>
+   </property>
+   <property name="toolTip">
+    <string>Translate the other selected visible point clouds to the centroid of the first selected cloud in panel order; the reference stays fixed</string>
+   </property>
+   <property name="icon">
+    <iconset resource="../../../resources/resources.qrc">
+     <normaloff>:/align-centroids.svg</normaloff>:/align-centroids.svg</iconset>
+   </property>
+  </action>
+  <action name="register_action">
+   <property name="text">
+    <string>Register (ICP)</string>
+   </property>
+   <property name="toolTip">
+    <string>Align the selected visible point clouds onto the first selected one with ICP and merge them</string>
+   </property>
+   <property name="icon">
+    <iconset resource="../../../resources/resources.qrc">
+     <normaloff>:/icp.svg</normaloff>:/icp.svg</iconset>
+   </property>
+  </action>
+  <action name="fit_plane_action">
+   <property name="text">
+    <string>Plane</string>
+   </property>
+  </action>
+  <action name="fit_sphere_action">
+   <property name="text">
+    <string>Sphere</string>
+   </property>
+  </action>
+  <action name="measure_spheres_action">
+   <property name="text">
+    <string>Spheres</string>
+   </property>
+  </action>
+  <action name="compensate_action">
+   <property name="text">
+    <string>Compensate</string>
+   </property>
+   <property name="toolTip">
+    <string>Correct the selected visible point clouds with a compensation model trained by the pinn-smcp trainer (raw reconstructions only)</string>
+   </property>
+   <property name="icon">
+    <iconset resource="../../../resources/resources.qrc">
+     <normaloff>:/compensate.svg</normaloff>:/compensate.svg</iconset>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -233,9 +541,15 @@
    <header>ui/preview/PointcloudPreviewWidget.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>smcp::PointcloudLayersPanel</class>
+   <extends>QWidget</extends>
+   <header>ui/pointcloud_editor/PointcloudLayersPanel.h</header>
+   <container>1</container>
+  </customwidget>
  </customwidgets>
  <resources>
-  <include location="../../../resources/resources.qrc"/>
+  <include location="../../../resources/resources.qrc" />
  </resources>
- <connections/>
+ <connections />
 </ui>

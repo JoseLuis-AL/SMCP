@@ -13,6 +13,10 @@
 .PARAMETER Generator
     ninja (default) or vs2026 (generates build\vs2026\SMCP.slnx and builds with MSBuild).
 
+.PARAMETER NoCamera
+    Builds without camera support (SMCP_WITH_SPINNAKER=OFF) in build\ninja-<config>-nocamera,
+    next to the normal build. Ninja generator only.
+
 .PARAMETER Clean
     Deletes the build\<preset> directory before configuring.
 
@@ -32,6 +36,7 @@ param(
     [ValidateSet('ninja', 'vs2026')]
     [string]$Generator = 'ninja',
 
+    [switch]$NoCamera,
     [switch]$Clean,
     [switch]$Run
 )
@@ -112,19 +117,37 @@ if ($Generator -eq 'ninja') {
     $buildPreset = "vs2026-$($Config.ToLower())"
 }
 
+if ($NoCamera -and $Generator -ne 'ninja') {
+    throw "-NoCamera is only available with the ninja generator."
+}
 $buildDir = Join-Path $repoRoot "build\$configurePreset"
+if ($NoCamera) { $buildDir = "$buildDir-nocamera" }
 if ($Clean -and (Test-Path $buildDir)) {
     Write-Host "Cleaning $buildDir" -ForegroundColor Yellow
     Remove-Item -Recurse -Force $buildDir
 }
 
-Write-Host "==> cmake --preset $configurePreset" -ForegroundColor Green
-& cmake --preset $configurePreset
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($NoCamera) {
+    # Same preset, another build directory and the camera option off.
+    Write-Host "==> cmake --preset $configurePreset -B $buildDir -DSMCP_WITH_SPINNAKER=OFF" -ForegroundColor Green
+    # CMake warns on stderr that SPINNAKER_DIR is unused; that must not stop the script.
+    $ErrorActionPreference = 'Continue'
+    & cmake --preset $configurePreset -B $buildDir -DSMCP_WITH_SPINNAKER=OFF
+    $ErrorActionPreference = 'Stop'
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "==> cmake --build --preset $buildPreset" -ForegroundColor Green
-& cmake --build --preset $buildPreset
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Write-Host "==> cmake --build $buildDir" -ForegroundColor Green
+    & cmake --build $buildDir
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} else {
+    Write-Host "==> cmake --preset $configurePreset" -ForegroundColor Green
+    & cmake --preset $configurePreset
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    Write-Host "==> cmake --build --preset $buildPreset" -ForegroundColor Green
+    & cmake --build --preset $buildPreset
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 
 $exeName = if ($Config -eq 'Debug') { 'SMCP_d.exe' } else { 'SMCP.exe' }
 $exePath = Join-Path $buildDir "bin\$exeName"

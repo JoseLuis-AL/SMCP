@@ -118,6 +118,15 @@ namespace Calibration
 	constexpr int Shadow_Threshold_Default_Value = 0;
 
 	const auto File = "Calibration/File";
+
+	/// Refine camera, projector and stereo pose together (Calibration::SolveOptions::jointRefinement).
+	const auto Joint_Refinement = "Calibration/JointRefinement";
+	constexpr bool Joint_Refinement_Default_Value = false;
+
+	/// Locate the chessboard corners in the projector with sub-pixel projector coordinates
+	/// (Calibration::Params::subpixelCorners).
+	const auto Subpixel_Corners = "Calibration/SubpixelCorners";
+	constexpr bool Subpixel_Corners_Default_Value = false;
 }
 
 namespace Reconstruction
@@ -131,7 +140,21 @@ namespace Reconstruction
 	const auto Save_Colors = "Reconstruction/SaveColors";
 	constexpr bool Save_Colors_Default_Value = true;
 
-	const auto Save_Binary = "Reconstruction/SaveBinary";
-	constexpr bool Save_Binary_Default_Value = true;
+	/// Apply the compensation model in Compensation_File to every reconstruction.
+	const auto Compensate = "Reconstruction/Compensate";
+	constexpr bool Compensate_Default_Value = false;
+	const auto Compensation_File = "Reconstruction/CompensationFile";
+
+	/// Sub-pixel reconstruction: one point per camera pixel, with fractional projector coordinates
+	/// (StructuredLight::RefinePattern). Off: the classic method, one point per projector pixel.
+	/// On by default since it was validated on ten ball-bar captures: diameter error 122 -> 86 um,
+	/// form RMS 151 -> 112 um, center distances unchanged.
+	const auto Subpixel = "Reconstruction/Subpixel";
+	constexpr bool Subpixel_Default_Value = true;
+
+	/// Triangulate with the plane of light of the projector column (Scan3d::Triangulation::ProjectorPlane)
+	/// instead of the midpoint between the camera ray and the projector ray.
+	const auto Plane_Triangulation = "Reconstruction/PlaneTriangulation";
+	constexpr bool Plane_Triangulation_Default_Value = false;
 }
 } // namespace smcp::Settings

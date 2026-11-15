@@ -17,6 +17,8 @@ Use these documents in this order:
 
 Additional material:
 
+- [Sample artifact file](samples/sample_artifact.json) shows the JSON format of a sphere artifact
+  measured on a CMM, used by **Measure Spheres**.
 - [Sample calibration file](samples/sample_calibration.yml) documents the OpenCV YAML
   fields consumed and produced by SMCP.
 - [`screenshots/`](screenshots/) contains visual references for the global theme and point

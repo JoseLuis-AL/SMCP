@@ -45,12 +45,15 @@ smcp_common_check='import numpy, scipy, sklearn, torch, tqdm, yaml; print(f"Pyth
 smcp_score_check='import numpy, scipy, sklearn, torch, torch_cluster, tqdm, yaml; print(f"Python environment OK | torch={torch.__version__} | CUDA runtime={torch.version.cuda} | CUDA available={torch.cuda.is_available()}"); print(f"GPU={torch.cuda.get_device_name(0) if torch.cuda.is_available() else '\''none'\''}")'
 smcp_straight_check='import numpy, scipy, sklearn, torch, torch_cluster, torch_geometric, tqdm, yaml; print(f"Python environment OK | torch={torch.__version__} | PyG={torch_geometric.__version__} | CUDA runtime={torch.version.cuda} | CUDA available={torch.cuda.is_available()}"); print(f"GPU={torch.cuda.get_device_name(0) if torch.cuda.is_available() else '\''none'\''}")'
 
-for smcp_env_name in model-score-denoise model-straightPCF pointcleannet; do
+smcp_pinn_check='import numpy, torch; print(f"Python environment OK | torch={torch.__version__} (CPU trainer)")'
+
+for smcp_env_name in model-score-denoise model-straightPCF pointcleannet model-pinn-smcp; do
     printf '\n[%s]\n' "${smcp_env_name}"
     smcp_check_code="${smcp_common_check}"
     case "${smcp_env_name}" in
         model-score-denoise) smcp_check_code="${smcp_score_check}" ;;
         model-straightPCF) smcp_check_code="${smcp_straight_check}" ;;
+        model-pinn-smcp) smcp_check_code="${smcp_pinn_check}" ;;
     esac
 
     if ! "${smcp_conda_exe}" run --name "${smcp_env_name}" \
@@ -82,6 +85,7 @@ if [[ "${smcp_environments_only}" == false ]]; then
         pointcleannet/run_pointcleannet.py
         pointcleannet/model/models/PointCleanNet_params.pth
         pointcleannet/model/models/PointCleanNet_model.pth
+        pinn-smcp/train_pinn_smcp.py
     )
 
     printf '\nModel artifacts:\n'

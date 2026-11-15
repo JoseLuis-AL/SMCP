@@ -19,6 +19,8 @@ ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 
 #pragma once
 
+#include <cstddef>
+
 #include <QDialog>
 #include <QElapsedTimer>
 
@@ -29,40 +31,43 @@ class QTimer;
 
 namespace smcp
 {
-/// <summary>
-/// Modal "Thinking..." window shown while an AI model processes the first point cloud in WSL.
-/// </summary>
-/// <remarks>
-/// It reports the elapsed time and the model's latest output line. Cancel, and closing the window,
-/// emit CancelRequested(); the dialog stays open until the editor closes it after the job stops.
-/// </remarks>
-class AiInferenceProgressDialog : public QDialog, public Ui::AiInferenceProgressDialog
-{
-	Q_OBJECT
+	/// <summary>
+	/// Modal progress window shown while an AI model processes a selected point cloud in WSL.
+	/// </summary>
+	/// <remarks>
+	/// It reports the elapsed time and the model's latest output line. Cancel, and closing the window,
+	/// emit CancelRequested(); the dialog stays open until the editor closes it after the job stops.
+	/// </remarks>
+	class AiInferenceProgressDialog : public QDialog, public Ui::AiInferenceProgressDialog
+	{
+		Q_OBJECT
 
-public:
-	explicit AiInferenceProgressDialog(const QString& modelName, QWidget* parent = nullptr);
+	public:
+		explicit AiInferenceProgressDialog(
+			const QString& modelName, const QString& cloudName, std::size_t pointCount, QWidget* parent = nullptr);
 
-	void SetOutput(const QString& text);
-	/// Inference finished; the result is being read into the editor and can no longer be cancelled.
-	void SetLoadingResult();
-	void SetCancelling();
+		/// For a batch of several clouds: adds "Cloud 2 of 5" to the message. One cloud needs no call.
+		void SetBatchPosition(int position, int total);
+		void SetOutput(const QString& text);
+		/// Inference finished; the result is being read into the editor and can no longer be cancelled.
+		void SetLoadingResult();
+		void SetCancelling();
 
-	void reject() override;
+		void reject() override;
 
-signals:
-	void CancelRequested();
+	signals:
+		void CancelRequested();
 
-public slots:
-	void on_cancel_button_clicked(bool checked = false);
+	public slots:
+		void on_cancel_button_clicked(bool checked = false);
 
-protected:
-	void keyPressEvent(QKeyEvent* event) override;
+	protected:
+		void keyPressEvent(QKeyEvent* event) override;
 
-private:
-	void UpdateElapsedTime();
+	private:
+		void UpdateElapsedTime();
 
-	QElapsedTimer _elapsed;
-	QTimer* _elapsedTimer = nullptr;
-};
+		QElapsedTimer _elapsed;
+		QTimer* _elapsedTimer = nullptr;
+	};
 } // namespace smcp

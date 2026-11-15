@@ -1,0 +1,272 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>IcpDialog</class>
+ <widget class="QDialog" name="IcpDialog">
+  <property name="minimumSize">
+   <size>
+    <width>420</width>
+    <height>0</height>
+   </size>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>360</width>
+    <height>290</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>ICP: Iterative Closest Point</string>
+  </property>
+  <property name="modal">
+   <bool>true</bool>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="section_group">
+     <property name="title">
+      <string>Parameters</string>
+     </property>
+     <layout class="QVBoxLayout" name="section_layout">
+      <item>
+       <layout class="QFormLayout" name="parameters_layout">
+        <property name="fieldGrowthPolicy">
+         <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="max_iterations_label">
+          <property name="text">
+           <string>Maximum iterations:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="max_iterations_spin">
+          <property name="toolTip">
+           <string>Maximum number of transform updates per point cloud</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>10000</number>
+          </property>
+          <property name="value">
+           <number>50</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="max_distance_label">
+          <property name="text">
+           <string>Maximum pair distance:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="max_distance_spin">
+          <property name="toolTip">
+           <string>Closest-point pairs farther apart than this distance (in cloud units) are ignored; 0 means no limit</string>
+          </property>
+          <property name="specialValueText">
+           <string>No limit</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.500000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="overlap_ratio_label">
+          <property name="text">
+           <string>Overlap ratio:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QDoubleSpinBox" name="overlap_ratio_spin">
+          <property name="toolTip">
+           <string>Fraction of the closest pairs used in each iteration; lower it when the clouds only overlap partially</string>
+          </property>
+          <property name="decimals">
+           <number>2</number>
+          </property>
+          <property name="minimum">
+           <double>0.050000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.050000000000000</double>
+          </property>
+          <property name="value">
+           <double>0.900000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="convergence_label">
+          <property name="text">
+           <string>Convergence threshold:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QDoubleSpinBox" name="convergence_spin">
+          <property name="toolTip">
+           <string>Stops when the relative change of the RMS error between iterations falls below this value</string>
+          </property>
+          <property name="decimals">
+           <number>8</number>
+          </property>
+          <property name="maximum">
+           <double>1.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.000010000000000</double>
+          </property>
+          <property name="value">
+           <double>0.000010000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="max_source_points_label">
+          <property name="text">
+           <string>Sampled points:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QSpinBox" name="max_source_points_spin">
+          <property name="toolTip">
+           <string>Random points of each cloud used to estimate its transform; the whole cloud is still moved. 0 uses every point</string>
+          </property>
+          <property name="specialValueText">
+           <string>All</string>
+          </property>
+          <property name="maximum">
+           <number>1000000000</number>
+          </property>
+          <property name="singleStep">
+           <number>10000</number>
+          </property>
+          <property name="value">
+           <number>50000</number>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="0" colspan="2">
+         <widget class="QCheckBox" name="point_to_plane_check">
+          <property name="toolTip">
+           <string>Minimizes the distance to the tangent planes of the target, which converges faster on smooth surfaces</string>
+          </property>
+          <property name="text">
+           <string>Point-to-plane distances</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="0" colspan="2">
+         <widget class="QCheckBox" name="align_centroids_check">
+          <property name="toolTip">
+           <string>Translates each cloud so its centroid matches the target's before iterating; useful when the clouds start far apart and overlap mostly</string>
+          </property>
+          <property name="text">
+           <string>Align centroids first</string>
+          </property>
+         </widget>
+        </item>
+        <item row="7" column="0" colspan="2">
+         <widget class="QCheckBox" name="align_to_merged_check">
+          <property name="toolTip">
+           <string>Aligns each cloud to the first one plus the clouds already registered, so captures that only overlap their neighbors still register</string>
+          </property>
+          <property name="text">
+           <string>Align each cloud to the clouds already merged</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="vertical_spacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>0</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="done_button">
+       <property name="text">
+        <string>Done</string>
+       </property>
+       <property name="default">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancel_button">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources />
+ <connections />
+</ui>

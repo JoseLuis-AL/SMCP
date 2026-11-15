@@ -13,6 +13,7 @@
     <file alias="icon-projector.svg">icons/icon-projector.svg</file>
     <file alias="unison.png">icons/logo_unison.png</file>
     <file alias="pointcloud-editor-icon.svg">icons/pointcloud-editor-icon.svg</file>
+    <file alias="app-icon.png">icons/app-icon.png</file>
     <file alias="remove-outlier-command-icon.svg">icons/remove-outlier-command-icon.svg</file>
     <file alias="icon-save.svg">icons/icon-save.svg</file>
     <file alias="eye-icon.svg">icons/eye-icon.svg</file>
@@ -20,6 +21,37 @@
     <file alias="trash-icon.svg">icons/trash-icon.svg</file>
     <file alias="load-pointcloud-icon.svg">icons/load-pointcloud-icon.svg</file>
     <file alias="first-pointcloud-icon.svg">icons/first-pointcloud-icon.svg</file>
+    <file alias="first-pointcloud-dark-icon.svg">icons/first-pointcloud-dark-icon.svg</file>
+    <file alias="palette.svg">icons/palette.svg</file>
+    <file alias="pencil-line.svg">icons/pencil-line.svg</file>
+    <file alias="panel-left-open.svg">icons/panel-left-open.svg</file>
+    <file alias="rotate-3d.svg">icons/rotate-3d.svg</file>
+    <file alias="move-3d.svg">icons/move-3d.svg</file>
+    <file alias="scene-origin.svg">icons/scene-origin.svg</file>
+    <file alias="square-dashed.svg">icons/square-dashed.svg</file>
+    <file alias="square-dashed-x.svg">icons/square-dashed-x.svg</file>
+    <file alias="sphere-measure.svg">icons/sphere-measure.svg</file>
+    <file alias="compensate.svg">icons/compensate.svg</file>
+    <file alias="plus.svg">icons/plus.svg</file>
+    <file alias="file-down.svg">icons/file-down.svg</file>
+    <file alias="square-dashed-mouse-pointer.svg">icons/square-dashed-mouse-pointer.svg</file>
+    <file alias="chart-quadrant.svg">icons/chart-quadrant.svg</file>
+    <file alias="align-centroids.svg">icons/align-centroids.svg</file>
+    <file alias="chevron-down.svg">icons/chevron-down.svg</file>
+    <file alias="layers-arrow-down.svg">icons/layers-arrow-down.svg</file>
+    <file alias="icp.svg">icons/icp.svg</file>
+    <file alias="chevron-up.svg">icons/chevron-up.svg</file>
+    <file alias="check.svg">icons/check.svg</file>
+    <file alias="radio-dot.svg">icons/radio-dot.svg</file>
+    <file alias="check-white.svg">icons/check-white.svg</file>
+    <file alias="radio-dot-white.svg">icons/radio-dot-white.svg</file>
+    <file alias="circle-dashed.svg">icons/circle-dashed.svg</file>
+    <file alias="cpu-ai.svg">icons/cpu-ai.svg</file>
+    <file alias="save.svg">icons/save.svg</file>
+    <file alias="folder-open.svg">icons/folder-open.svg</file>
+    <file alias="trash.svg">icons/trash.svg</file>
+    <file alias="square-check.svg">icons/square-check.svg</file>
+    <file alias="square-minus.svg">icons/square-minus.svg</file>
     <file>theme/smcp.qss</file>
   </qresource>
 </RCC>

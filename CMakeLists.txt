@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(SMCP
-    VERSION 3.0.2
+    VERSION 3.6.8
     DESCRIPTION "Structured-light 3D scanner with projector-camera calibration"
-    LANGUAGES CXX)
+    LANGUAGES CXX RC)
 
 # With a localized cl.exe, Ninja would otherwise record no header dependencies.
 include("${CMAKE_SOURCE_DIR}/cmake/MsvcShowIncludesPrefix.cmake")
@@ -82,12 +82,12 @@ find_package(OpenGL REQUIRED)
 # Sources (explicit lists per subdirectory, no GLOB)
 # ---------------------------------------------------------------------------
 set(SMCP_SOURCES_APP
-    src/app/main.cpp
     src/app/Application.cpp
     src/app/Application.h
     src/app/MainWindow.cpp
     src/app/MainWindow.h
     src/app/MainWindow.ui
+    src/app/TaskRunner.h
 )
 
 set(SMCP_SOURCES_UI
@@ -107,9 +107,17 @@ set(SMCP_SOURCES_UI
     src/ui/pointcloud_editor/ExportPointcloudDialog.cpp
     src/ui/pointcloud_editor/ExportPointcloudDialog.h
     src/ui/pointcloud_editor/ExportPointcloudDialog.ui
+    src/ui/pointcloud_editor/IcpDialog.cpp
+    src/ui/pointcloud_editor/IcpDialog.h
+    src/ui/pointcloud_editor/IcpDialog.ui
+    src/ui/pointcloud_editor/PointcloudEditorAi.cpp
+    src/ui/pointcloud_editor/PointcloudEditorCommands.cpp
     src/ui/pointcloud_editor/PointcloudEditorDialog.cpp
+    src/ui/pointcloud_editor/PointcloudEditorFiles.cpp
     src/ui/pointcloud_editor/PointcloudEditorDialog.h
     src/ui/pointcloud_editor/PointcloudEditorDialog.ui
+    src/ui/pointcloud_editor/PointcloudLayersPanel.cpp
+    src/ui/pointcloud_editor/PointcloudLayersPanel.h
     src/ui/pointcloud_editor/PlaneFitDialog.cpp
     src/ui/pointcloud_editor/PlaneFitDialog.h
     src/ui/pointcloud_editor/PlaneFitDialog.ui
@@ -119,10 +127,23 @@ set(SMCP_SOURCES_UI
     src/ui/pointcloud_editor/SphereFitDialog.cpp
     src/ui/pointcloud_editor/SphereFitDialog.h
     src/ui/pointcloud_editor/SphereFitDialog.ui
+    src/ui/pointcloud_editor/SphereMeasurementDialog.cpp
+    src/ui/pointcloud_editor/SphereMeasurementDialog.h
+    src/ui/pointcloud_editor/SphereMeasurementDialog.ui
+    src/ui/pointcloud_editor/SphereResultsDialog.cpp
+    src/ui/pointcloud_editor/SphereResultsDialog.h
+    src/ui/pointcloud_editor/SphereResultsDialog.ui
+    src/ui/pointcloud_editor/PointcloudProject.cpp
+    src/ui/pointcloud_editor/PointcloudProject.h
+    src/ui/preview/EditorScene.cpp
+    src/ui/preview/EditorScene.h
     src/ui/preview/ImageLabel.cpp
     src/ui/preview/ImageLabel.h
     src/ui/preview/PixmapWidget.cpp
     src/ui/preview/PixmapWidget.h
+    src/ui/preview/PointcloudPreviewInput.cpp
+    src/ui/preview/PointcloudPreviewInternal.h
+    src/ui/preview/PointcloudPreviewOverlays.cpp
     src/ui/preview/PointcloudPreviewWidget.cpp
     src/ui/preview/PointcloudPreviewWidget.h
     src/ui/preview/PointcloudWidget.cpp
@@ -132,6 +153,8 @@ set(SMCP_SOURCES_UI
     src/ui/ProcessingDialog.ui
     src/ui/widgets/ProjectorWidget.cpp
     src/ui/widgets/ProjectorWidget.h
+    src/ui/widgets/ComboBoxPopupStyle.h
+    src/ui/widgets/EditorDialogStyle.h
 )
 
 # The capture dialog requires Spinnaker.
@@ -142,13 +165,24 @@ set(SMCP_SOURCES_UI_CAPTURE
 )
 
 set(SMCP_SOURCES_CORE
+    src/core/AsyncTask.h
     src/core/BusyCursorGuard.h
+    src/core/Calibration.cpp
+    src/core/Calibration.h
     src/core/CalibrationData.cpp
     src/core/CalibrationData.h
     src/core/IoUtil.cpp
     src/core/IoUtil.h
+    src/core/Parallel.h
+    src/core/Progress.h
     src/core/PointcloudOps.cpp
     src/core/PointcloudOps.h
+    src/core/Compensation.cpp
+    src/core/Compensation.h
+    src/core/SphereScan.cpp
+    src/core/SphereScan.h
+    src/core/SphereMeasurement.cpp
+    src/core/SphereMeasurement.h
     src/core/Scan3d.cpp
     src/core/Scan3d.h
     src/core/StructuredLight.cpp
@@ -171,6 +205,8 @@ set(SMCP_SOURCES_CAMERA
 set(SMCP_SOURCES_EXPORT
     src/export/IOExport.cpp
     src/export/IOExport.h
+    src/export/ExcelExport.cpp
+    src/export/ExcelExport.h
 )
 
 set(SMCP_SOURCES_COMMON
@@ -185,20 +221,20 @@ set(SMCP_RESOURCES
 )
 
 # ---------------------------------------------------------------------------
-# Executable
+# Targets: smcp_app holds the whole application except main(); the executable and the
+# application smoke test link it, so every source is compiled once.
 # ---------------------------------------------------------------------------
-add_executable(SMCP
+add_library(smcp_app STATIC
     ${SMCP_SOURCES_APP}
     ${SMCP_SOURCES_UI}
     ${SMCP_SOURCES_CORE}
     ${SMCP_SOURCES_AI}
     ${SMCP_SOURCES_EXPORT}
     ${SMCP_SOURCES_COMMON}
-    ${SMCP_RESOURCES}
 )
 
 if(SMCP_WITH_SPINNAKER)
-    target_sources(SMCP PRIVATE ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CAMERA})
+    target_sources(smcp_app PRIVATE ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CAMERA})
 endif()
 
 # Folder view in Visual Studio and other IDEs.
@@ -206,18 +242,16 @@ source_group(TREE "${CMAKE_SOURCE_DIR}" FILES
     ${SMCP_SOURCES_APP} ${SMCP_SOURCES_UI} ${SMCP_SOURCES_UI_CAPTURE} ${SMCP_SOURCES_CORE} ${SMCP_SOURCES_AI}
     ${SMCP_SOURCES_CAMERA} ${SMCP_SOURCES_EXPORT} ${SMCP_SOURCES_COMMON} ${SMCP_RESOURCES})
 
-set_target_properties(SMCP PROPERTIES
-    OUTPUT_NAME SMCP
-    DEBUG_POSTFIX _d
-    # Release has no console (WinMain through Qt5::WinMain); Debug keeps the console.
-    WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
+# A single include directory: includes are qualified with their subdirectory
+# ("app/Application.h", "core/Scan3d.h", ...). Each .ui form lives next to its class; the
+# generated ui_*.h headers are reachable by the targets that link the library.
+target_include_directories(smcp_app PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}/smcp_app_autogen/include
 )
 
-# A single include directory: includes are qualified with their subdirectory
-# ("app/Application.h", "core/Scan3d.h", ...). Each .ui form lives next to its class.
-target_include_directories(SMCP PRIVATE ${CMAKE_SOURCE_DIR}/src)
-
-target_compile_definitions(SMCP PRIVATE
+target_compile_definitions(smcp_app PUBLIC
+    SMCP_VERSION="${PROJECT_VERSION}"
     NOMINMAX
     _CRT_SECURE_NO_WARNINGS
     _SCL_SECURE_NO_WARNINGS
@@ -231,16 +265,17 @@ target_compile_definitions(SMCP PRIVATE
     $<$<BOOL:${SMCP_WITH_SPINNAKER}>:USE_SPINNAKER>
 )
 
-target_compile_options(SMCP PRIVATE
+target_compile_options(smcp_app PUBLIC
     /W3
     /MP
     /utf-8
     /external:W0   # no warnings from Qt, OpenCV, and Spinnaker headers
 )
 
-target_link_libraries(SMCP PRIVATE
+target_link_libraries(smcp_app PUBLIC
     Qt5::Core
     Qt5::Gui
+    Qt5::GuiPrivate
     Qt5::Widgets
     Qt5::OpenGL
     Qt5::Concurrent
@@ -254,7 +289,68 @@ target_link_libraries(SMCP PRIVATE
     $<$<BOOL:${SMCP_WITH_SPINNAKER}>:Spinnaker::Spinnaker>
 )
 
+add_executable(SMCP
+    src/app/main.cpp
+    ${SMCP_RESOURCES}
+    resources/app-icon.rc
+)
+
+set_target_properties(SMCP PROPERTIES
+    OUTPUT_NAME SMCP
+    DEBUG_POSTFIX _d
+    # Release has no console (WinMain through Qt5::WinMain); Debug keeps the console.
+    WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
+)
+
+target_link_libraries(SMCP PRIVATE smcp_app)
+
 if(BUILD_TESTING)
+    add_executable(SMCP_editor_tests
+        tests/PointcloudEditorTests.cpp
+        tests/SphereResultsTests.cpp
+        tests/PointcloudProjectTests.cpp
+        tests/IoExportTests.cpp
+        src/core/Scan3d.cpp
+        src/core/CalibrationData.cpp
+        resources/resources.qrc
+        src/ui/pointcloud_editor/IcpDialog.cpp
+        src/ui/pointcloud_editor/IcpDialog.h
+        src/ui/pointcloud_editor/SphereMeasurementDialog.cpp
+        src/ui/pointcloud_editor/SphereMeasurementDialog.h
+        src/ui/pointcloud_editor/SphereResultsDialog.cpp
+        src/ui/pointcloud_editor/SphereResultsDialog.h
+        src/ui/pointcloud_editor/PointcloudProject.cpp
+        src/ui/pointcloud_editor/PointcloudProject.h
+        src/ui/pointcloud_editor/AiInferenceProgressDialog.cpp
+        src/ui/pointcloud_editor/AiInferenceProgressDialog.h
+        src/ui/pointcloud_editor/AiModelConfigDialog.cpp
+        src/ui/pointcloud_editor/AiModelConfigDialog.h
+        src/ai/WslModelService.cpp
+        src/ai/WslModelService.h
+        src/core/Compensation.cpp
+        src/core/SphereScan.cpp
+        src/core/SphereMeasurement.cpp
+        src/core/AsyncTask.h
+        src/export/IOExport.cpp
+        src/export/ExcelExport.cpp
+        src/core/StructuredLight.cpp
+        src/ui/preview/EditorScene.cpp
+        src/ui/preview/EditorScene.h
+        src/ui/preview/PointcloudPreviewInput.cpp
+        src/ui/preview/PointcloudPreviewOverlays.cpp
+        src/ui/preview/PointcloudPreviewWidget.cpp
+        src/ui/preview/PointcloudPreviewWidget.h
+        src/ui/pointcloud_editor/PointcloudLayersPanel.cpp
+        src/ui/pointcloud_editor/PointcloudLayersPanel.h
+        src/core/PointcloudOps.cpp
+    )
+    target_include_directories(SMCP_editor_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_editor_tests PRIVATE NOMINMAX _USE_MATH_DEFINES _HAS_AUTO_PTR_ETC=1)
+    target_compile_options(SMCP_editor_tests PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_editor_tests PRIVATE Qt5::Widgets Qt5::GuiPrivate opencv_core opencv_flann opencv_imgproc opencv_highgui opencv_calib3d OpenGL::GL)
+    add_test(NAME editor_selection COMMAND SMCP_editor_tests -platform offscreen)
+    set_tests_properties(editor_selection PROPERTIES ENVIRONMENT "QT_PLUGIN_PATH=${SMCP_QT_BIN_DIR}/../plugins")
+
     add_executable(SMCP_ai_tests
         tests/AiModelTests.cpp
         src/ai/WslModelService.cpp
@@ -265,6 +361,200 @@ if(BUILD_TESTING)
     target_compile_options(SMCP_ai_tests PRIVATE /W3 /utf-8)
     target_link_libraries(SMCP_ai_tests PRIVATE Qt5::Core)
     add_test(NAME ai_model_contract COMMAND SMCP_ai_tests)
+
+    add_executable(SMCP_pointcloud_tests
+        tests/PointcloudOpsTests.cpp
+        src/core/PointcloudOps.cpp
+        src/core/PointcloudOps.h
+    )
+    target_include_directories(SMCP_pointcloud_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_pointcloud_tests PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES _HAS_AUTO_PTR_ETC=1)
+    target_compile_options(SMCP_pointcloud_tests PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_pointcloud_tests PRIVATE opencv_core opencv_flann)
+    add_test(NAME pointcloud_registration COMMAND SMCP_pointcloud_tests)
+
+    # Sub-pixel decoding and reconstruction, and the ways of solving the calibration, on synthetic
+    # data with a known answer.
+    add_executable(SMCP_subpixel_tests
+        tests/SubpixelTests.cpp
+        src/core/Calibration.cpp
+        src/core/CalibrationData.cpp
+        src/core/Scan3d.cpp
+        src/core/StructuredLight.cpp
+    )
+    set_target_properties(SMCP_subpixel_tests PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_subpixel_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_subpixel_tests PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_subpixel_tests PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_subpixel_tests PRIVATE Qt5::Core opencv_core opencv_imgproc opencv_highgui opencv_calib3d
+        opencv_features2d opencv_flann)
+    add_test(NAME subpixel_reconstruction COMMAND SMCP_subpixel_tests)
+
+    add_executable(SMCP_sphere_tests
+        tests/SphereMeasurementTests.cpp
+        src/core/SphereMeasurement.cpp
+        src/core/SphereMeasurement.h
+        src/core/PointcloudOps.cpp
+        src/core/PointcloudOps.h
+    )
+    target_include_directories(SMCP_sphere_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_sphere_tests PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES _HAS_AUTO_PTR_ETC=1)
+    target_compile_options(SMCP_sphere_tests PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_sphere_tests PRIVATE opencv_core opencv_imgproc opencv_flann)
+    add_test(NAME sphere_measurement COMMAND SMCP_sphere_tests)
+
+    add_executable(SMCP_compensation_tests
+        tests/CompensationTests.cpp
+        src/core/Compensation.cpp
+        src/core/Compensation.h
+        src/core/PointcloudOps.cpp
+        src/core/PointcloudOps.h
+    )
+    target_include_directories(SMCP_compensation_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_compensation_tests PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE SMCP_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_compile_options(SMCP_compensation_tests PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_compensation_tests PRIVATE Qt5::Core opencv_core opencv_flann)
+    add_test(NAME compensation_model COMMAND SMCP_compensation_tests)
+
+    # Rendering check of the editor viewer on a real OpenGL context with a synthetic cloud (CTest
+    # runs on the offscreen platform, which has no OpenGL). Run by hand: SMCP_viewer_render_check
+    add_executable(SMCP_viewer_render_check
+        tests/ViewerRenderCheck.cpp
+        ${SMCP_RESOURCES}
+    )
+    target_link_libraries(SMCP_viewer_render_check PRIVATE smcp_app)
+
+    # Renders the themed controls and some editor dialogs to PNG files, to review the visual
+    # style without opening the application. Run by hand: SMCP_style_gallery <output directory>
+    add_executable(SMCP_style_gallery
+        tests/StyleGallery.cpp
+        ${SMCP_RESOURCES}
+    )
+    target_link_libraries(SMCP_style_gallery PRIVATE smcp_app)
+
+    # Takes the documentation screenshots (docs/screenshots) from the real application, on a
+    # workspace with data. Run by hand, see the header of the source file:
+    #   SMCP_doc_screenshots <workspace> <output directory>
+    add_executable(SMCP_doc_screenshots
+        tests/DocScreenshots.cpp
+        ${SMCP_RESOURCES}
+    )
+    target_link_libraries(SMCP_doc_screenshots PRIVATE smcp_app dwmapi)
+
+    # Regenerates resources/icons/app-icon.ico and app-icon.png from the SVG artwork (needs its font
+    # installed). Run by hand when the artwork changes: SMCP_make_app_icon <svg> resources/icons
+    add_executable(SMCP_make_app_icon tests/MakeAppIcon.cpp)
+    set_target_properties(SMCP_make_app_icon PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_link_libraries(SMCP_make_app_icon PRIVATE Qt5::Widgets)
+
+    # Golden regression of decoding, calibration and reconstruction against the original serial
+    # code kept in tests/legacy. It needs a real workspace, so it is run by hand:
+    #   SMCP_pipeline_regress <workspace> --cols 24 --rows 17
+    add_executable(SMCP_pipeline_regress
+        tests/PipelineRegression.cpp
+        tests/legacy/LegacyScan3d.cpp
+        tests/legacy/LegacyScan3d.h
+        tests/legacy/LegacyStructuredLight.cpp
+        tests/legacy/LegacyStructuredLight.h
+        src/core/Calibration.cpp
+        src/core/CalibrationData.cpp
+        src/core/Scan3d.cpp
+        src/core/StructuredLight.cpp
+    )
+    set_target_properties(SMCP_pipeline_regress PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_pipeline_regress PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests)
+    target_compile_definitions(SMCP_pipeline_regress PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_pipeline_regress PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_pipeline_regress PRIVATE Qt5::Widgets opencv_core opencv_imgproc opencv_highgui
+        opencv_calib3d opencv_features2d opencv_flann)
+
+    # Read-only statistics of the decoded Gray code of existing capture sets (camera pixels per
+    # projector pixel, uncertain pixels, centroid noise), to judge reconstruction changes before
+    # making them. Run by hand: SMCP_decode_stats <set directory>...
+    # Plane-fit noise of the classic and the sub-pixel reconstruction on the chessboards of the
+    # calibration sets of a workspace (read-only). Run by hand: SMCP_reconstruct_compare <workspace>
+    add_executable(SMCP_reconstruct_compare
+        tests/ReconstructCompare.cpp
+        src/core/CalibrationData.cpp
+        src/core/Scan3d.cpp
+        src/core/StructuredLight.cpp
+    )
+    set_target_properties(SMCP_reconstruct_compare PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_reconstruct_compare PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_reconstruct_compare PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_reconstruct_compare PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_reconstruct_compare PRIVATE Qt5::Core opencv_core opencv_imgproc opencv_highgui
+        opencv_calib3d)
+
+    # One capture set reconstructed with a given calibration and method, from the command line
+    # (read-only). Run by hand: SMCP_reconstruct_set <set> --calibration <yml> --out <cloud.xyz>
+    add_executable(SMCP_reconstruct_set
+        tests/ReconstructSet.cpp
+        src/core/CalibrationData.cpp
+        src/core/Scan3d.cpp
+        src/core/StructuredLight.cpp
+    )
+    set_target_properties(SMCP_reconstruct_set PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_reconstruct_set PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_reconstruct_set PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_reconstruct_set PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_reconstruct_set PRIVATE Qt5::Core opencv_core opencv_imgproc opencv_highgui
+        opencv_calib3d)
+
+    # Ways of solving the calibration, judged on boards left out of it, from the corners saved in
+    # a workspace (read-only). Run by hand: SMCP_calibration_compare <workspace>
+    add_executable(SMCP_calibration_compare
+        tests/CalibrationCompare.cpp
+        src/core/Calibration.cpp
+        src/core/CalibrationData.cpp
+        src/core/Scan3d.cpp
+        src/core/StructuredLight.cpp
+    )
+    set_target_properties(SMCP_calibration_compare PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_calibration_compare PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_calibration_compare PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_calibration_compare PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_calibration_compare PRIVATE Qt5::Core opencv_core opencv_imgproc opencv_highgui
+        opencv_calib3d opencv_features2d opencv_flann)
+
+    # Sphere diameters, center distances and form against a reference artifact, from the command
+    # line (read-only), to compare processing options on existing clouds.
+    # Run by hand: SMCP_measure_spheres --artifact <artifact.json> <cloud.xyz>...
+    add_executable(SMCP_measure_spheres
+        tests/MeasureSpheres.cpp
+        src/core/SphereMeasurement.cpp
+        src/core/PointcloudOps.cpp
+    )
+    set_target_properties(SMCP_measure_spheres PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_measure_spheres PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_measure_spheres PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_measure_spheres PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_measure_spheres PRIVATE Qt5::Core opencv_core opencv_imgproc opencv_flann)
+
+    # Periodic errors of the decoded projector coordinates on a flat chessboard (read-only).
+    # Run by hand: SMCP_band_analysis <workspace> <set index>
+    add_executable(SMCP_band_analysis tests/BandAnalysis.cpp src/core/StructuredLight.cpp)
+    set_target_properties(SMCP_band_analysis PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_band_analysis PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_band_analysis PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_band_analysis PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_band_analysis PRIVATE opencv_core opencv_imgproc opencv_highgui)
+
+    add_executable(SMCP_decode_stats tests/DecodeStats.cpp src/core/StructuredLight.cpp)
+    set_target_properties(SMCP_decode_stats PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(SMCP_decode_stats PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(SMCP_decode_stats PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES
+        _HAS_AUTO_PTR_ETC=1 UNICODE _UNICODE)
+    target_compile_options(SMCP_decode_stats PRIVATE /W3 /utf-8 /external:W0)
+    target_link_libraries(SMCP_decode_stats PRIVATE opencv_core opencv_imgproc opencv_highgui)
 endif()
 
 # ---------------------------------------------------------------------------

@@ -27,8 +27,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #pragma once
+#include <functional>
+
 #include <QMainWindow>
 
+class QLabel;
+
+#include "core/Scan3d.h"
 #include "ui_MainWindow.h"
 
 namespace smcp
@@ -93,12 +98,17 @@ public slots:
 
 	//calibration group
 	void on_homography_window_spin_valueChanged(int i);
+	void on_joint_refinement_check_stateChanged(int state);
+	void on_subpixel_corners_check_stateChanged(int state);
+	void on_plane_triangulation_check_stateChanged(int state);
 
 	//reconstruction group
 	void on_max_dist_line_editingFinished() const;
 	void on_normals_check_stateChanged(int state);
 	void on_colors_check_stateChanged(int state);
-	void on_binary_file_check_stateChanged(int state);
+	void on_subpixel_check_stateChanged(int state);
+	void on_compensation_check_stateChanged(int state);
+	void on_compensation_button_clicked(bool checked = false);
 
 	//switch horizontal/vertical image display
 	void _on_horizontal_layout_action_triggered(bool checked) const;
@@ -114,6 +124,20 @@ private:
 
 	void SetView(ViewType view);
 	void ResetView();
+	/// Enables each workflow action only when it can run, explains in its tooltip what is missing
+	/// otherwise, and shows the calibration in use in the status bar.
+	void UpdateWorkflowState();
+	/// Runs one workflow operation behind the processing dialog. The dialog closes by itself when
+	/// the operation ends cleanly, unless `keepOpen`; it stays open when its log needs attention.
+	void RunProcessing(const QString& title, const QString& busyMessage, const std::function<void()>& operation, bool keepOpen);
+	/// Asks for a file and writes the cloud as XYZ or PLY (ASCII or binary, chosen in the dialog).
+	void ExportPointcloud(Scan3d::Pointcloud& pointcloud, const QString& defaultPath);
+
+	QLabel* _calibrationStatus = nullptr;
+	/// Applies the configured compensation model to a new reconstruction when Compensate is checked.
+	/// Returns false if the user cancels because the model was trained with another calibration.
+	bool ApplyCompensation(Scan3d::Pointcloud& pointcloud);
+	void UpdateCompensationTooltip();
 };
 
 } // namespace smcp

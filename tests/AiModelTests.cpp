@@ -97,5 +97,31 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	// Trainers (smcp --list-trainers / --train).
+	{
+		const QByteArray trainersJson = R"json({
+			"schema_version": 1,
+			"trainers": [
+				{"id": "pinn-smcp", "display_name": "PINN", "configuration": {"epochs": 10},
+				 "configuration_schema": {"epochs": {"type": "integer", "minimum": 1}}}],
+			"warnings": ["old: missing environment"]})json";
+		QVector<smcp::AiTrainerInfo> trainers;
+		QString trainerError;
+		success &= Check(smcp::WslModelService::ParseTrainers(trainersJson, trainers, trainerError) &&
+				trainers.size() == 1 && trainers[0].id == "pinn-smcp" &&
+				trainerError.contains("old: missing environment"),
+			"trainer list exposes the trainers and the warnings");
+		const QByteArray invalidTrainers = R"json({"schema_version": 1, "trainers": [
+			{"id": "pinn-smcp", "display_name": "PINN", "configuration": {"epochs": 0},
+			 "configuration_schema": {"epochs": {"type": "integer", "minimum": 1}}}]})json";
+		success &= Check(!smcp::WslModelService::ParseTrainers(invalidTrainers, trainers, trainerError) &&
+				trainers.isEmpty(),
+			"trainer defaults must satisfy their own schema");
+		const QStringList paths{ "/mnt/c/a", "/mnt/c/b", "/mnt/c/c" };
+		success &= Check(smcp::WslModelService::TrainArguments("pinn-smcp", paths, "job").join('|') ==
+				"--train|pinn-smcp|--dataset|/mnt/c/a|--output|/mnt/c/b|--config-json|/mnt/c/c|--job-id|job",
+			"training passes the dataset, output, configuration and job id as separate arguments");
+	}
+
 	return success ? 0 : 1;
 }

@@ -17,6 +17,8 @@ namespace
 {
 	constexpr int Introspection_Timeout_Ms = 20000;
 	constexpr int Inference_Timeout_Ms = 2 * 60 * 60 * 1000;
+	constexpr int Training_Timeout_Ms = 24 * 60 * 60 * 1000;
+	constexpr int Prediction_Timeout_Ms = 5 * 60 * 1000;
 	/// Time the WSL job has to stop after --cancel-job before wsl.exe is terminated.
 	constexpr int Cancellation_Grace_Ms = 15000;
 
@@ -72,6 +74,7 @@ WslModelService::~WslModelService()
 	_modelsCallback = {};
 	_modelCallback = {};
 	_inferenceCallback = {};
+	_trainersCallback = {};
 	_timeout->stop();
 	_process->blockSignals(true);
 	if (_process->state() != QProcess::NotRunning)
@@ -113,15 +116,54 @@ void WslModelService::DescribeModel(const QString& modelId, ModelCallback callba
 void WslModelService::RunInference(const QString& modelId, const QString& inputPath, const QString& outputPath,
 	const QString& configurationPath, InferenceCallback callback)
 {
+	RunJob({ inputPath, outputPath, configurationPath },
+		[modelId](const QStringList& paths, const QString& jobId)
+		{
+			return QStringList{ "--model", modelId, "--input", paths[0], "--output", paths[1], "--config-json",
+				paths[2], "--job-id", jobId };
+		},
+		Inference_Timeout_Ms, std::move(callback));
+}
+
+void WslModelService::ListTrainers(TrainersCallback callback)
+{
+	if (IsBusy())
+	{
+		callback({}, tr("Another WSL model operation is already running."));
+		return;
+	}
+	_cancelled = false;
+	_trainersCallback = std::move(callback);
+	StartSmcp({ "--list-trainers", "--json" }, Operation::ListTrainers, Introspection_Timeout_Ms);
+}
+
+void WslModelService::Train(const QString& trainerId, const QString& datasetDirectory, const QString& outputPath,
+	const QString& configurationPath, InferenceCallback callback)
+{
+	RunJob({ datasetDirectory, outputPath, configurationPath },
+		[trainerId](const QStringList& paths, const QString& jobId) { return TrainArguments(trainerId, paths, jobId); },
+		Training_Timeout_Ms, std::move(callback));
+}
+
+QStringList WslModelService::TrainArguments(const QString& trainerId, const QStringList& wslPaths, const QString& jobId)
+{
+	return { "--train", trainerId, "--dataset", wslPaths.value(0), "--output", wslPaths.value(1), "--config-json",
+		wslPaths.value(2), "--job-id", jobId };
+}
+
+void WslModelService::RunJob(
+	const QStringList& windowsPaths, JobArguments arguments, int timeoutMs, InferenceCallback callback)
+{
 	if (IsBusy())
 	{
 		callback(false, tr("Another WSL model operation is already running."));
 		return;
 	}
 	_inferenceCallback = std::move(callback);
-	_inferenceModel = modelId;
+	_jobArguments = std::move(arguments);
+	_jobTimeoutMs = timeoutMs;
 	_inferenceJobId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-	_windowsPaths = QStringList{ inputPath, outputPath, configurationPath };
+	_windowsPaths = windowsPaths;
 	_wslPaths.clear();
 	_pathIndex = 0;
 	_cancelled = false;
@@ -196,13 +238,12 @@ void WslModelService::StartNextPathConversion()
 
 void WslModelService::StartInferenceProcess()
 {
-	if (_wslPaths.size() != 3)
+	if (_wslPaths.size() != _windowsPaths.size() || !_jobArguments)
 	{
-		FailCurrent(tr("Could not convert the temporary files to WSL paths."));
+		FailCurrent(tr("Could not convert the files to WSL paths."));
 		return;
 	}
-	StartSmcp({ "--model", _inferenceModel, "--input", _wslPaths[0], "--output", _wslPaths[1],
-		"--config-json", _wslPaths[2], "--job-id", _inferenceJobId }, Operation::Inference, Inference_Timeout_Ms);
+	StartSmcp(_jobArguments(_wslPaths, _inferenceJobId), Operation::Inference, _jobTimeoutMs);
 }
 
 void WslModelService::OnReadyRead()
@@ -270,6 +311,14 @@ void WslModelService::OnFinished(int exitCode, QProcess::ExitStatus exitStatus)
 		auto callback = std::move(_modelCallback);
 		if (callback) callback(model, error);
 	}
+	else if (completedOperation == Operation::ListTrainers)
+	{
+		QVector<AiTrainerInfo> trainers;
+		QString error;
+		ParseTrainers(_standardOutput, trainers, error);
+		auto callback = std::move(_trainersCallback);
+		if (callback) callback(trainers, error);
+	}
 	else if (completedOperation == Operation::Inference)
 	{
 		auto callback = std::move(_inferenceCallback);
@@ -313,6 +362,11 @@ void WslModelService::FailCurrent(const QString& error)
 	else if (failedOperation == Operation::Describe)
 	{
 		auto callback = std::move(_modelCallback);
+		if (callback) callback({}, error);
+	}
+	else if (failedOperation == Operation::ListTrainers)
+	{
+		auto callback = std::move(_trainersCallback);
 		if (callback) callback({}, error);
 	}
 	else
@@ -379,6 +433,54 @@ bool WslModelService::ParseModel(const QByteArray& json, AiModelInfo& model, QSt
 		return false;
 	}
 	return ParseModelObject(document.object(), model, error);
+}
+
+bool WslModelService::ParseTrainers(const QByteArray& json, QVector<AiTrainerInfo>& trainers, QString& error)
+{
+	trainers.clear();
+	error.clear();
+	QJsonParseError parseError;
+	const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+	if (parseError.error != QJsonParseError::NoError || !document.isObject())
+	{
+		error = tr("Invalid trainer list returned by WSL: %1").arg(parseError.errorString());
+		return false;
+	}
+	const QJsonObject root = document.object();
+	if (root.value("schema_version").toInt() != 1 || !root.value("trainers").isArray())
+	{
+		error = tr("Unsupported or incomplete trainer registry response.");
+		return false;
+	}
+	for (const QJsonValue& value : root.value("trainers").toArray())
+	{
+		const QJsonObject object = value.toObject();
+		AiTrainerInfo trainer;
+		trainer.id = object.value("id").toString();
+		trainer.displayName = object.value("display_name").toString();
+		if (trainer.id.isEmpty() || trainer.displayName.isEmpty() || !object.value("configuration").isObject()
+			|| !object.value("configuration_schema").isObject())
+		{
+			error = tr("The trainer metadata returned by WSL is incomplete.");
+			trainers.clear();
+			return false;
+		}
+		trainer.configuration = object.value("configuration").toObject();
+		trainer.configurationSchema = object.value("configuration_schema").toObject();
+		if (!ValidateConfiguration(trainer.configuration, trainer.configurationSchema, error))
+		{
+			trainers.clear();
+			return false;
+		}
+		trainers.append(trainer);
+	}
+	QStringList warnings;
+	for (const QJsonValue& warning : root.value("warnings").toArray())
+	{
+		if (warning.isString()) warnings.append(warning.toString());
+	}
+	if (!warnings.isEmpty()) error = tr("Some trainers are unavailable: %1").arg(warnings.join("; "));
+	return true;
 }
 
 bool WslModelService::ValidateConfiguration(const QJsonObject& configuration,

@@ -29,7 +29,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QDir>
 #include <QButtonGroup>
+#include <QLabel>
+#include <QStatusBar>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -52,6 +56,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef USE_SPINNAKER
 #include "ui/CaptureDialog.h"
 #endif
+#include "core/Compensation.h"
 #include "export/IOExport.h"
 #include "core/BusyCursorGuard.h"
 #include "ui/pointcloud_editor/PointcloudEditorDialog.h"
@@ -117,6 +122,18 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags) :
 	homography_window_spin->setValue(config.value(Settings::Calibration::H_Win, Settings::Calibration::H_Win_Default_Value).toUInt());
 	homography_window_spin->blockSignals(false);
 
+	joint_refinement_check->blockSignals(true);
+	joint_refinement_check->setChecked(config.value(Settings::Calibration::Joint_Refinement, Settings::Calibration::Joint_Refinement_Default_Value).toBool());
+	joint_refinement_check->blockSignals(false);
+
+	subpixel_corners_check->blockSignals(true);
+	subpixel_corners_check->setChecked(config.value(Settings::Calibration::Subpixel_Corners, Settings::Calibration::Subpixel_Corners_Default_Value).toBool());
+	subpixel_corners_check->blockSignals(false);
+
+	plane_triangulation_check->blockSignals(true);
+	plane_triangulation_check->setChecked(config.value(Settings::Reconstruction::Plane_Triangulation, Settings::Reconstruction::Plane_Triangulation_Default_Value).toBool());
+	plane_triangulation_check->blockSignals(false);
+
 	//displayOriginalRadio->blockSignals(true);
 	//displayOriginalRadio->setChecked(true);
 	//displayOriginalRadio->blockSignals(false);
@@ -134,9 +151,14 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags) :
 	colors_check->setChecked(config.value(Settings::Reconstruction::Save_Colors, Settings::Reconstruction::Save_Colors_Default_Value).toBool());
 	colors_check->blockSignals(false);
 
-	binary_file_check->blockSignals(true);
-	binary_file_check->setChecked(config.value(Settings::Reconstruction::Save_Binary, Settings::Reconstruction::Save_Binary_Default_Value).toBool());
-	binary_file_check->blockSignals(false);
+	subpixel_check->blockSignals(true);
+	subpixel_check->setChecked(config.value(Settings::Reconstruction::Subpixel, Settings::Reconstruction::Subpixel_Default_Value).toBool());
+	subpixel_check->blockSignals(false);
+
+	compensation_check->blockSignals(true);
+	compensation_check->setChecked(config.value(Settings::Reconstruction::Compensate, Settings::Reconstruction::Compensate_Default_Value).toBool());
+	compensation_check->blockSignals(false);
+	UpdateCompensationTooltip();
 
 	//set contextual menu for layout changing
 	auto horizontalAction = new QAction("Horizontal", current_image_group);
@@ -161,8 +183,32 @@ MainWindow::MainWindow(QWidget* parent, Qt::WindowFlags flags) :
 	viewButtonGroup->addButton(projector_view_button);
 	viewButtonGroup->addButton(view_3d_view_button);
 
+	// Calibration in use, always visible at the right of the status bar.
+	_calibrationStatus = new QLabel(this);
+	statusBar()->addPermanentWidget(_calibrationStatus);
+
+	// Workflow shortcuts, in the order of the Actions column.
+	const struct { QToolButton* button; const char* keys; const char* description; } actions[] = {
+		{ capture_action_button, "Ctrl+1", "Capture a new set with the camera and the projector" },
+		{ extract_corners_action_button, "Ctrl+2", "Find the chessboard in the selected sets" },
+		{ decode_action_button, "Ctrl+3", "Decode the Gray-code patterns of the selected sets" },
+		{ calibration_action_button, "Ctrl+4", "Calibrate camera and projector with the selected sets" },
+		{ reconstruction_action_button, "Ctrl+5", "Reconstruct the current set and export the point cloud" },
+		{ pointcloud_action_button, "Ctrl+6", "Open the point cloud editor" },
+	};
+	for (const auto& action : actions)
+	{
+		action.button->setShortcut(QKeySequence(action.keys));
+		action.button->setProperty("baseToolTip", QString("%1 (%2)").arg(action.description, action.keys));
+		action.button->setToolTip(action.button->property("baseToolTip").toString());
+	}
+
+	// Selecting or unselecting sets changes what can run.
+	connect(&(APP->model), &QAbstractItemModel::dataChanged, this, [this]() { UpdateWorkflowState(); });
+
 	// Set view.
 	ResetView();
+	UpdateWorkflowState();
 
 	show_message("Ready");
 }
@@ -178,7 +224,7 @@ void MainWindow::on_change_dir_action_triggered(bool checked)
 void MainWindow::on_load_calibration_action_triggered(bool checked)
 {
 	APP->LoadCalibration(this);
-	// TODO: Remove glwidget->updateCamera();
+	UpdateWorkflowState();
 }
 
 void MainWindow::on_save_calibration_action_triggered(bool checked)
@@ -190,6 +236,7 @@ void MainWindow::on_display_calibration_action_triggered(bool checked)
 {
 	CalibrationDialog dialog(this, Qt::WindowCloseButtonHint);
 	dialog.exec();
+	UpdateWorkflowState();  // a calibration can be loaded from that dialog
 }
 
 /// <summary>
@@ -355,6 +402,21 @@ void MainWindow::on_m_spin_valueChanged(int i)
 	APP->config.setValue(Settings::Decode::M, i);
 }
 
+void MainWindow::on_joint_refinement_check_stateChanged(int state)
+{
+	APP->config.setValue(Settings::Calibration::Joint_Refinement, (state == Qt::Checked));
+}
+
+void MainWindow::on_subpixel_corners_check_stateChanged(int state)
+{
+	APP->config.setValue(Settings::Calibration::Subpixel_Corners, (state == Qt::Checked));
+}
+
+void MainWindow::on_plane_triangulation_check_stateChanged(int state)
+{
+	APP->config.setValue(Settings::Reconstruction::Plane_Triangulation, (state == Qt::Checked));
+}
+
 void MainWindow::on_homography_window_spin_valueChanged(int i)
 {
 	APP->config.setValue(Settings::Calibration::H_Win, i);
@@ -375,9 +437,104 @@ void MainWindow::on_colors_check_stateChanged(int state)
 	APP->config.setValue(Settings::Reconstruction::Save_Colors, (state == Qt::Checked));
 }
 
-void MainWindow::on_binary_file_check_stateChanged(int state)
+void MainWindow::on_subpixel_check_stateChanged(int state)
 {
-	APP->config.setValue(Settings::Reconstruction::Save_Binary, (state == Qt::Checked));
+	APP->config.setValue(Settings::Reconstruction::Subpixel, (state == Qt::Checked));
+}
+
+void MainWindow::on_compensation_check_stateChanged(int state)
+{
+	if (state == Qt::Checked && APP->config.value(Settings::Reconstruction::Compensation_File).toString().isEmpty())
+	{
+		on_compensation_button_clicked();
+		if (APP->config.value(Settings::Reconstruction::Compensation_File).toString().isEmpty())
+		{
+			// No model chosen: leave compensation off.
+			compensation_check->blockSignals(true);
+			compensation_check->setChecked(false);
+			compensation_check->blockSignals(false);
+			return;
+		}
+	}
+	APP->config.setValue(Settings::Reconstruction::Compensate, (state == Qt::Checked));
+}
+
+/// Chooses the model and shows its summary, so the user sees its validation and calibration before
+/// enabling it.
+void MainWindow::on_compensation_button_clicked(bool)
+{
+	const QString current = APP->config.value(Settings::Reconstruction::Compensation_File).toString();
+	const QString path = QFileDialog::getOpenFileName(this, "Compensation model",
+		current.isEmpty() ? APP->GetRootDir() : current, "Compensation model (*.json)");
+	if (path.isEmpty())
+	{
+		return;
+	}
+	Pointcloud::CompensationModel model;
+	QString error;
+	if (!Pointcloud::LoadCompensationModel(path, model, error))
+	{
+		QMessageBox::warning(this, "Compensation", QString("The compensation model cannot be used: %1").arg(error));
+		return;
+	}
+	APP->config.setValue(Settings::Reconstruction::Compensation_File, path);
+	UpdateCompensationTooltip();
+	QMessageBox::information(this, "Compensation", QString("%1\n\n%2")
+		.arg(QDir::toNativeSeparators(path))
+		.arg(Pointcloud::DescribeCompensationModel(model, APP->config.value(Settings::Calibration::File).toString())));
+}
+
+void MainWindow::UpdateCompensationTooltip()
+{
+	const QString path = APP->config.value(Settings::Reconstruction::Compensation_File).toString();
+	compensation_check->setToolTip(path.isEmpty()
+		? QString("Correct every reconstruction with a compensation model (choose one with Model...)")
+		: QString("Correct every reconstruction with %1").arg(QDir::toNativeSeparators(path)));
+}
+
+bool MainWindow::ApplyCompensation(Scan3d::Pointcloud& pointcloud)
+{
+	if (!compensation_check->isChecked() || !pointcloud.points.data)
+	{
+		return true;
+	}
+	const QString path = APP->config.value(Settings::Reconstruction::Compensation_File).toString();
+	Pointcloud::CompensationModel model;
+	QString error;
+	if (!Pointcloud::LoadCompensationModel(path, model, error))
+	{
+		QMessageBox::warning(this, "Compensation",
+			QString("The reconstruction was not compensated: %1").arg(error));
+		return true;
+	}
+	const QString calibration = APP->config.value(Settings::Calibration::File).toString();
+	if (Pointcloud::CompensationCalibrationDiffers(model, calibration))
+	{
+		const auto answer = QMessageBox::question(this, "Compensation",
+			QString("The compensation model was trained with a different calibration than %1, so its correction "
+					"may not fit this reconstruction.\n\nApply it anyway?").arg(QDir::toNativeSeparators(calibration)),
+			QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::No);
+		if (answer == QMessageBox::Cancel)
+		{
+			return false;
+		}
+		if (answer == QMessageBox::No)
+		{
+			show_message("Reconstruction not compensated (different calibration).");
+			return true;
+		}
+	}
+
+	Pointcloud::CompensationStats stats;
+	{
+		const BusyCursorGuard cursorGuard;
+		Pointcloud::Compensate(pointcloud.points, model, &stats);
+	}
+	const QString message = QString("Compensated %1 points with %2 (%3 outside the trained volume).")
+		.arg(stats.points).arg(QFileInfo(path).fileName()).arg(stats.outside);
+	show_message(message);
+	qInfo().noquote() << message;
+	return true;
 }
 
 void MainWindow::on_quit_action_triggered(bool checked)
@@ -425,6 +582,7 @@ void MainWindow::_on_root_dir_changed(const QString& dirname)
 	image2_label->Clear();
 
 	ResetView();
+	UpdateWorkflowState();
 
 	setWindowTitle(QString("%1 - %2").arg(Settings::App::Window_Name, dirname));
 
@@ -505,11 +663,6 @@ void MainWindow::on_reconstruct_dump_action_triggered(bool checked)
 
 	show_message("Reconstruction...");
 
-	//parameters
-	bool normals = APP->config.value(Settings::Reconstruction::Save_Normals, Settings::Reconstruction::Save_Normals_Default_Value).toBool();
-	bool colors = APP->config.value(Settings::Reconstruction::Save_Colors, Settings::Reconstruction::Save_Colors_Default_Value).toBool();
-	bool binary = APP->config.value(Settings::Reconstruction::Save_Binary, Settings::Reconstruction::Save_Binary_Default_Value).toBool();
-
 	Scan3d::Pointcloud& pointcloud = APP->pointcloud;
 	APP->ReconstructModelDump(patternImage, minMaxImage, colorImage, pointcloud, this);
 
@@ -519,45 +672,13 @@ void MainWindow::on_reconstruct_dump_action_triggered(bool checked)
 		show_message("Reconstruction failed");
 		return;
 	}
-
-	//compute normals
-	if (normals)
+	if (!ApplyCompensation(pointcloud))
 	{
-		//busy cursor
-		show_message("Computing normals...");
-		QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
-		QApplication::processEvents();
-
-		APP->ComputeNormals(pointcloud);
-
-		//restore regular cursor
-		QApplication::restoreOverrideCursor();
-		QApplication::processEvents();
+		return;
 	}
 
-	//save the points
-	QString name = rootDir + "/pointcloud";
-	filename = QFileDialog::getSaveFileName(this, "Save pointcloud", name + ".ply", "Pointclouds (*.ply)");
-	if (!filename.isEmpty())
-	{
-		//busy cursor
-		show_message(QString("Saving to %1...").arg(filename));
-		QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
-		QApplication::processEvents();
-
-		unsigned plyFlags = IoUtil::PlyPoints
-			| (colors ? IoUtil::PlyColors : 0)
-			| (normals ? IoUtil::PlyNormals : 0)
-			| (binary ? IoUtil::PlyBinary : 0);
-
-		IoUtil::WritePly(filename.toStdString(), pointcloud, plyFlags);
-
-		//restore regular cursor
-		QApplication::restoreOverrideCursor();
-		QApplication::processEvents();
-		show_message(QString("Pointcloud saved: %1").arg(filename));
-		std::cout << QString("Pointcloud saved: %1").arg(filename).toStdString() << std::endl;
-	}
+	ExportPointcloud(pointcloud, rootDir + "/pointcloud");
+	ResetView();
 }
 
 int MainWindow::GetCurrentSet(void) const
@@ -610,101 +731,68 @@ void MainWindow::on_capture_action_button_clicked(bool clicked)
 #endif
 }
 
+void MainWindow::RunProcessing(const QString& title, const QString& busyMessage, const std::function<void()>& operation, bool keepOpen)
+{
+	show_message(busyMessage);
+
+	// Reset previous processing state and show the (modal) dialog while the operation runs.
+	APP->ProcessingReset();
+	APP->processingDialog.setWindowTitle(title);
+	APP->processingDialog.show();
+	QApplication::processEvents();
+
+	operation();
+	UpdateCurrentImage();
+
+	// A clean run closes by itself; errors, warnings and results wait for the user to read them.
+	APP->processingDialog.Finish();
+	if (keepOpen || APP->processingDialog.NeedsAttention())
+	{
+		APP->processingDialog.exec();
+	}
+	APP->processingDialog.hide();
+	QApplication::processEvents();
+
+	ResetView();
+	UpdateWorkflowState();
+}
+
 /// <summary>
-/// Runs the chessboard corner detection pipeline and updates the current image view with the results.
+/// Finds the chessboard in every selected set and shows the corners over the current image.
 /// </summary>
-/// <param name="checked">Indicates whether the button is in a checked state (not used).</param>
-/// <remarks>
-/// Resets any previous processing state before running corner detection. Once the extraction completes, the current image is refreshed to reflect the
-/// detected corners. Progress and output are shown through the processing dialog.
-/// </remarks>
 void MainWindow::on_extract_corners_action_button_clicked(bool checked)
 {
-	show_message("Searching chessboard corners...");
+	RunProcessing("Corner detection", "Searching chessboard corners...", []() { APP->ExtractChessboardCorners(); }, false);
 
-	// Reset previous processing state and prepare the dialog for the corner detection run.
-	APP->ProcessingReset();
-	APP->processingDialog.setWindowTitle("Corner detection");
-	APP->processingDialog.show();
-	QApplication::processEvents();
-
-	// Execute chessboard corner extraction and refresh the image view with the results.
-	APP->ExtractChessboardCornersV2();
-	UpdateCurrentImage();
-
-	// Mark processing as finished, display the dialog with results and wait for dismissal.
-	APP->processingDialog.Finish();
-	APP->processingDialog.exec();
-	APP->processingDialog.hide();
-	QApplication::processEvents();
-
-	ResetView();
-	show_message("Ready");
+	int found = 0;
+	for (const auto& corners : APP->cornersCamera)
+	{
+		found += corners.empty() ? 0 : 1;
+	}
+	show_message(QString("Chessboard found in %1 of %2 selected sets").arg(found).arg(APP->SelectedSetCount()));
 }
 
 /// <summary>
-/// Runs the full decode pipeline over all captures and updates the current image view with the results.
+/// Decodes every selected set; sets already decoded with the current parameters are reused.
 /// </summary>
-/// <param name="checked">Indicates whether the button is in a checked state (not used).</param>
-/// <remarks>
-/// Resets any previous processing state before decoding. Once decoding completes, the current image is refreshed to reflect the updated results.
-/// Progress and output are shown through the processing dialog.
-/// </remarks>
 void MainWindow::on_decode_action_button_clicked(bool checked)
 {
-	show_message("Decoding...");
+	RunProcessing("Decode", "Decoding...", []() { APP->DecodeAll(); }, false);
 
-	// Reset previous processing state and prepare the dialog for the decode run.
-	APP->ProcessingReset();
-	APP->processingDialog.setWindowTitle("Decode");
-	APP->processingDialog.show();
-	QApplication::processEvents();
-
-	// Execute decoding over all captures and refresh the image view.
-	APP->DecodeAll();
-	UpdateCurrentImage();
-
-	// Mark processing as finished, display the dialog with results and wait for dismissal.
-	APP->processingDialog.Finish();
-	APP->processingDialog.exec();
-	APP->processingDialog.hide();
-	QApplication::processEvents();
-
-	ResetView();
-	show_message("Ready");
+	const auto decoded = std::count_if(APP->patternList.begin(), APP->patternList.end(), [](const cv::Mat& m) { return !m.empty(); });
+	show_message(QString("%1 sets decoded").arg(decoded));
 }
 
 /// <summary>
-/// Executes the full calibration pipeline and reflects the results in the current view.
+/// Runs the calibration pipeline. Its dialog stays open so the results can be read.
 /// </summary>
-/// <param name="checked">Indicates whether the button is in a checked state (not used).</param>
-/// <remarks>
-/// Resets any previous processing state before running calibration. Once the calibration completes, the current image and camera are refreshed to
-/// reflect the updated results. Progress and output are shown through the processing dialog.
-/// </remarks>
 void MainWindow::on_calibration_action_button_clicked(bool checked)
 {
-	show_message("Running calibration...");
+	RunProcessing("Calibration", "Running calibration...", []() { APP->Calibrate(); }, true);
 
-	// Reset previous processing state and prepare the dialog for the calibration run.
-	APP->ProcessingReset();
-	APP->processingDialog.setWindowTitle("Calibration");
-	APP->processingDialog.show();
-	QApplication::processEvents();
-
-	// Execute calibration and refresh the image and camera to reflect updated results.
-	APP->Calibrate();
-	UpdateCurrentImage();
-	// TODO: Remove glwidget->updateCamera();
-
-	// Mark processing as finished, display the dialog with results and wait for dismissal.
-	APP->processingDialog.Finish();
-	APP->processingDialog.exec();
-	APP->processingDialog.hide();
-	QApplication::processEvents();
-
-	ResetView();
-	show_message("Ready");
+	show_message(APP->calib.IsValid()
+		? QString("Calibration finished with %1 sets (stereo error %2 px)").arg(APP->CalibratedSetCount()).arg(APP->calib.stereoError, 0, 'f', 3)
+		: QString("Calibration not completed"));
 }
 
 /// <summary>
@@ -728,39 +816,35 @@ void MainWindow::on_reconstruction_action_button_clicked(bool checked)
 
 	show_message("Reconstruction...");
 
-	// Read export configuration flags.
-	bool normals = APP->config.value(Settings::Reconstruction::Save_Normals, Settings::Reconstruction::Save_Normals_Default_Value).toBool();
-	bool colors = APP->config.value(Settings::Reconstruction::Save_Colors, Settings::Reconstruction::Save_Colors_Default_Value).toBool();
-	bool binary = APP->config.value(Settings::Reconstruction::Save_Binary, Settings::Reconstruction::Save_Binary_Default_Value).toBool();
-
 	// Run reconstruction and validate that points were produced.
 	Scan3d::Pointcloud& pointcloud = APP->pointcloud;
 	APP->ReconstructModel(row, pointcloud, this);
+	UpdateWorkflowState();
 	if (!pointcloud.points.data)
 	{
 		// Reconstruction was canceled or failed; no pointcloud available.
 		show_message("Reconstruction failed");
 		return;
 	}
-
-	// Optionally compute surface normals from the reconstructed pointcloud.
-	if (normals)
+	if (!ApplyCompensation(pointcloud))
 	{
-		show_message("Computing normals...");
-		QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
-		QApplication::processEvents();
-
-		APP->ComputeNormals(pointcloud);
-
-		QApplication::restoreOverrideCursor();
-		QApplication::processEvents();
+		return;
 	}
 
-	// Build default filename from the scan set name.
+	// Default filename from the scan set name.
 	const QString setName = APP->model.data(APP->model.index(row, 0), Qt::DisplayRole).toString();
-	const QString defaultPath = QDir(APP->GetRootDir()).filePath(setName);
+	ExportPointcloud(pointcloud, QDir(APP->GetRootDir()).filePath(setName));
 
-	// Offer both PLY and XYZ formats in the save dialog.
+	// The cloud can be inspected in the 3D view whether or not it was saved.
+	ResetView();
+}
+
+void MainWindow::ExportPointcloud(Scan3d::Pointcloud& pointcloud, const QString& defaultPath)
+{
+	const bool normals = APP->config.value(Settings::Reconstruction::Save_Normals, Settings::Reconstruction::Save_Normals_Default_Value).toBool();
+	const bool colors = APP->config.value(Settings::Reconstruction::Save_Colors, Settings::Reconstruction::Save_Colors_Default_Value).toBool();
+
+	// The format, including ASCII or binary PLY, is chosen in the save dialog.
 	const QString filter = "PolyWorks ASCII (*.xyz);;PLY ASCII (*.ply);;PLY Binary (*.ply)";
 	QString selectedFilter;
 	const QString filename = QFileDialog::getSaveFileName(
@@ -768,10 +852,10 @@ void MainWindow::on_reconstruction_action_button_clicked(bool checked)
 
 	if (filename.isEmpty())
 	{
+		show_message("Reconstruction finished (not saved)");
 		return;
 	}
 
-	// Save based on selected format.
 	show_message(QStringLiteral("Saving to %1...").arg(filename));
 	{
 		const BusyCursorGuard cursorGuard;
@@ -789,7 +873,11 @@ void MainWindow::on_reconstruction_action_button_clicked(bool checked)
 		}
 		else
 		{
-			// Standard PLY export.
+			// Normals only exist in PLY files, so they are computed only for them.
+			if (normals)
+			{
+				APP->ComputeNormals(pointcloud);
+			}
 			const bool isBinary = selectedFilter.contains("Binary");
 			unsigned plyFlags = IoUtil::PlyPoints
 				| (colors ? IoUtil::PlyColors : 0)
@@ -801,6 +889,7 @@ void MainWindow::on_reconstruction_action_button_clicked(bool checked)
 		if (!success)
 		{
 			show_message("Failed to save pointcloud.");
+			QMessageBox::warning(this, "Save pointcloud", QString("The point cloud could not be saved to %1").arg(QDir::toNativeSeparators(filename)));
 			return;
 		}
 	}
@@ -808,8 +897,46 @@ void MainWindow::on_reconstruction_action_button_clicked(bool checked)
 	const QString message = QStringLiteral("Pointcloud saved: %1").arg(filename);
 	show_message(message);
 	qInfo().noquote() << message;
+}
 
-	ResetView();
+void MainWindow::UpdateWorkflowState()
+{
+	Application* const app = APP;
+	if (!app || !_calibrationStatus)
+	{
+		return;
+	}
+
+	const int sets = app->model.rowCount();
+	const int selected = app->SelectedSetCount();
+	const bool calibrated = app->calib.IsValid();
+
+	// Enabled only when the action can run; the tooltip says what is missing otherwise.
+	const auto set = [](QToolButton* button, bool enabled, const QString& missing)
+	{
+		button->setEnabled(enabled);
+		const QString base = button->property("baseToolTip").toString();
+		button->setToolTip(enabled ? base : QString("%1\n\nNot available: %2").arg(base, missing));
+	};
+	const QString noSets = sets ? QString("select at least one set in the workspace list.")
+								: QString("the workspace has no capture sets. Capture one or choose another directory.");
+	set(extract_corners_action_button, selected > 0, noSets);
+	set(decode_action_button, selected > 0, noSets);
+	set(calibration_action_button, selected >= 3, QString("calibration needs at least 3 selected sets (%1 selected).").arg(selected));
+	set(reconstruction_action_button, sets > 0 && calibrated,
+		sets ? QString("load a calibration (Calibration > Load...) or run Calibrate first.") : noSets);
+
+	if (calibrated)
+	{
+		const QString file = app->calib.filename.isEmpty() ? QString("not saved") : QFileInfo(app->calib.filename).fileName();
+		_calibrationStatus->setText(QString("Calibration: %1  |  stereo error %2 px").arg(file).arg(app->calib.stereoError, 0, 'f', 3));
+		_calibrationStatus->setToolTip(app->calib.filename.isEmpty() ? QString() : QDir::toNativeSeparators(app->calib.filename));
+	}
+	else
+	{
+		_calibrationStatus->setText("No calibration loaded");
+		_calibrationStatus->setToolTip("Load one with Calibration > Load... or compute it with Calibrate");
+	}
 }
 
 /// <summary>

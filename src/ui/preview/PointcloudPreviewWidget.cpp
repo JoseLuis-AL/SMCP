@@ -1,744 +1,1214 @@
+// PointcloudPreviewWidget, part 1 of 3: scene transactions, layers, history, camera and OpenGL
+// drawing. The overlays are in PointcloudPreviewOverlays.cpp and the input handling in
+// PointcloudPreviewInput.cpp.
+
 #include "ui/preview/PointcloudPreviewWidget.h"
+#include "ui/preview/PointcloudPreviewInternal.h"
+#include "core/AsyncTask.h"
+#include "core/Parallel.h"
+#include <atomic>
+#include <QTimer>
+#include <QVector4D>
+#include <stdexcept>
 
 #include <algorithm>
 #include <limits>
+#include <set>
 
 #include <QDebug>
-#include <QAbstractItemModel>
-#include <QComboBox>
-#include <QHBoxLayout>
-#include <QIcon>
-#include <QInputDialog>
-#include <QLabel>
-#include <QLineEdit>
-#include <QListWidget>
+#include <QKeyEvent>
 #include <QMouseEvent>
-#include <QMessageBox>
-#include <QOpenGLContext>
 #include <QPainter>
-#include <QPixmap>
-#include <QRegularExpression>
-#include <QResizeEvent>
-#include <QTimer>
-#include <QToolButton>
+#include <QImage>
+#include <QCursor>
+#include <functional>
+#include <QtMath>
+#include <QOpenGLContext>
 #include <QWheelEvent>
 
 namespace smcp
 {
-
-// GLSL 120 (OpenGL 2.1), same as PointcloudWidget.
-static const char* Vertex_Shader_Source =
-"#version 120\n"
-"attribute vec3 a_position;\n"
-"attribute vec3 a_color;\n"
-"uniform mat4 u_mvp;\n"
-"varying vec3 v_color;\n"
-"void main() {\n"
-"    gl_Position  = u_mvp * vec4(a_position, 1.0);\n"
-"    gl_PointSize = 2.0;\n"
-"    v_color      = a_color;\n"
-"}\n";
-
-static const char* Fragment_Shader_Source =
-"#version 120\n"
-"varying vec3 v_color;\n"
-"void main() {\n"
-"    gl_FragColor = vec4(v_color, 1.0);\n"
-"}\n";
-
-static QIcon ColorPreviewIcon(const QColor& color)
-{
-	QPixmap preview(18, 18);
-	preview.fill(Qt::transparent);
-	QPainter painter(&preview);
-	painter.setRenderHint(QPainter::Antialiasing, false);
-	painter.setPen(QColor("#777777"));
-	painter.setBrush(color.isValid() ? color : QColor(Qt::transparent));
-	painter.drawRect(1, 1, 15, 15);
-	if (!color.isValid())
+	namespace
 	{
-		painter.drawLine(2, 15, 15, 2);
+		class PreviewOverlay : public QWidget
+		{
+		public:
+			PreviewOverlay(QWidget* parent, std::function<void(QPainter&)> paint) :
+				QWidget(parent), _paint(std::move(paint))
+			{
+				setAttribute(Qt::WA_TransparentForMouseEvents);
+				setAttribute(Qt::WA_NoSystemBackground);
+			}
+
+		protected:
+			void paintEvent(QPaintEvent*) override
+			{
+				QPainter painter(this);
+				_paint(painter);
+			}
+
+		private:
+			std::function<void(QPainter&)> _paint;
+		};
 	}
-	return QIcon(preview);
-}
 
-/* Construction ============================================================================ */
 
-PointcloudPreviewWidget::PointcloudPreviewWidget(QWidget* parent)
-	: QOpenGLWidget(parent)
-{
-	setMinimumSize(320, 240);
-	setFocusPolicy(Qt::StrongFocus);
+	// GLSL 120 (OpenGL 2.1), same as PointcloudWidget.
+	// The color of a point is, in order of priority: the selection color when its `selected` flag
+	// (a_color.a) is set, the layer's color override when it has one (u_override.a = 1), or the
+	// color stored in the point.
+	static const char* Vertex_Shader_Source = "#version 120\n"
+											  "attribute vec3 a_position;\n"
+											  "attribute vec4 a_color;\n"
+											  "uniform mat4 u_mvp;\n"
+											  "uniform vec4 u_override;\n"
+											  "uniform vec3 u_selection;\n"
+											  "varying vec3 v_color;\n"
+											  "void main() {\n"
+											  "    gl_Position  = u_mvp * vec4(a_position, 1.0);\n"
+											  "    gl_PointSize = 2.0;\n"
+											  "    vec3 base    = mix(a_color.rgb, u_override.rgb, u_override.a);\n"
+											  "    v_color      = mix(base, u_selection, a_color.a);\n"
+											  "}\n";
 
-	// Overlay list of clouds (styled in resources/theme/smcp.qss, #pointcloud_overlay_list).
-	_cloudListWidget = new QListWidget(this);
-	_cloudListWidget->setObjectName("pointcloud_overlay_list");
-	_cloudListWidget->setDragDropMode(QAbstractItemView::InternalMove);
-	_cloudListWidget->setDefaultDropAction(Qt::MoveAction);
-	_cloudListWidget->setFixedWidth(270);
-	_cloudListWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-	_cloudListWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-	_cloudListWidget->hide();
-	// A drag-and-drop move is the only way rows move. The rebuild is deferred because rowsMoved is
-	// emitted inside the list drop handler, before it finishes with the rows being replaced.
-	connect(_cloudListWidget->model(), &QAbstractItemModel::rowsMoved, this,
-		[this]() { QTimer::singleShot(0, this, [this]() { OnCloudListReordered(); }); });
-}
+	static const char* Fragment_Shader_Source = "#version 120\n"
+												"varying vec3 v_color;\n"
+												"void main() {\n"
+												"    gl_FragColor = vec4(v_color, 1.0);\n"
+												"}\n";
 
-PointcloudPreviewWidget::~PointcloudPreviewWidget()
-{
-	// During application shutdown Qt may already have released the widget's OpenGL context.
-	// In that case there is no valid context in which to destroy GPU objects explicitly.
-	if (!context() || !context()->isValid())
+	using namespace PreviewInternal;
+
+	/* Construction ============================================================================ */
+
+	PointcloudPreviewWidget::PointcloudPreviewWidget(QWidget* parent) : QOpenGLWidget(parent)
 	{
+		_history.push_back({ tr("Initial state"), SceneState() });
+		setMinimumSize(320, 240);
+		setFocusPolicy(Qt::StrongFocus);
+		_overlay = new PreviewOverlay(this, [this](QPainter& painter) { PaintOverlays(painter); });
+		_overlay->setObjectName("navigation_overlay");
+		_navigationTimer = new QTimer(this);
+		_navigationTimer->setSingleShot(true);
+		_navigationTimer->setInterval(Navigation_Rest_Milliseconds);
+		connect(_navigationTimer, &QTimer::timeout, this,
+			[this]()
+			{
+				// The camera came to rest: draw every point again.
+				_navigating = false;
+				update();
+			});
+	}
+
+	PointcloudPreviewWidget::~PointcloudPreviewWidget()
+	{
+		// During application shutdown Qt may already have released the widget's OpenGL context.
+		// In that case there is no valid context in which to destroy GPU objects explicitly.
+		if (!context() || !context()->isValid())
+		{
+			_clouds.clear();
+			return;
+		}
+
+		makeCurrent();
+		for (auto& entry : _clouds)
+		{
+			DestroyEntry(*entry);
+		}
 		_clouds.clear();
-		return;
+		doneCurrent();
 	}
 
-	makeCurrent();
-	for (auto& entry : _clouds)
+	/* OpenGL ================================================================================== */
+
+	void PointcloudPreviewWidget::initializeGL()
 	{
-		DestroyEntry(*entry);
-	}
-	_clouds.clear();
-	doneCurrent();
-}
-
-/* OpenGL ================================================================================== */
-
-void PointcloudPreviewWidget::initializeGL()
-{
-	initializeOpenGLFunctions();
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glEnable(GL_DEPTH_TEST);
-	BuildShaders();
-}
-
-void PointcloudPreviewWidget::BuildShaders()
-{
-	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, Vertex_Shader_Source))
-	{
-		qWarning() << "PointcloudPreviewWidget: vertex shader error:" << _shaderProgram.log();
-	}
-	if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, Fragment_Shader_Source))
-	{
-		qWarning() << "PointcloudPreviewWidget: fragment shader error:" << _shaderProgram.log();
-	}
-	_shaderProgram.bindAttributeLocation("a_position", 0);
-	_shaderProgram.bindAttributeLocation("a_color", 1);
-	if (!_shaderProgram.link())
-	{
-		qWarning() << "PointcloudPreviewWidget: shader link error:" << _shaderProgram.log();
-	}
-}
-
-void PointcloudPreviewWidget::UpdateProjection(int w, int h)
-{
-	const float aspect = (h > 0) ? static_cast<float>(w) / static_cast<float>(h) : 1.0f;
-	const float nearPlane = std::max(0.01f, _distance * 0.001f);
-	const float farPlane = _distance * 10.0f;
-	_projection.setToIdentity();
-	_projection.perspective(45.0f, aspect, nearPlane, farPlane);
-}
-
-void PointcloudPreviewWidget::resizeGL(int w, int h)
-{
-	glViewport(0, 0, w, std::max(1, h));
-	UpdateProjection(w, std::max(1, h));
-}
-
-void PointcloudPreviewWidget::UpdateViewMatrix()
-{
-	_view.setToIdentity();
-	_view.translate(0.0f, 0.0f, -_distance);
-	_view.rotate(_rotationX, 1.0f, 0.0f, 0.0f);
-	_view.rotate(_rotationY, 0.0f, 1.0f, 0.0f);
-	_view.translate(-_center);
-}
-
-void PointcloudPreviewWidget::paintGL()
-{
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	if (_clouds.empty())
-	{
-		return;
+		initializeOpenGLFunctions();
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LESS);
+		BuildShaders();
 	}
 
-	for (auto& entry : _clouds)
+	void PointcloudPreviewWidget::BuildShaders()
 	{
-		if (entry->pendingUpload)
+		if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, Vertex_Shader_Source))
 		{
-			UploadEntry(*entry);
+			qWarning() << "PointcloudPreviewWidget: vertex shader error:" << _shaderProgram.log();
+		}
+		if (!_shaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, Fragment_Shader_Source))
+		{
+			qWarning() << "PointcloudPreviewWidget: fragment shader error:" << _shaderProgram.log();
+		}
+		_shaderProgram.bindAttributeLocation("a_position", 0);
+		_shaderProgram.bindAttributeLocation("a_color", 1);
+		if (!_shaderProgram.link())
+		{
+			qWarning() << "PointcloudPreviewWidget: shader link error:" << _shaderProgram.log();
 		}
 	}
 
-	UpdateProjection(width(), height());
-	UpdateViewMatrix();
-
-	const QMatrix4x4 mvp = _projection * _view;
-	const int stride = 6 * static_cast<int>(sizeof(float));
-
-	_shaderProgram.bind();
-	_shaderProgram.setUniformValue("u_mvp", mvp);
-
-	for (auto& entry : _clouds)
+	void PointcloudPreviewWidget::UpdateProjection(int w, int h)
 	{
-		if (!entry->visible || entry->vertexCount <= 0 || !entry->vao.isCreated())
-		{
-			continue;
-		}
-		entry->vao.bind();
-		entry->vbo.bind();
-
-		_shaderProgram.enableAttributeArray(0);
-		_shaderProgram.setAttributeBuffer(0, GL_FLOAT, 0, 3, stride);
-		_shaderProgram.enableAttributeArray(1);
-		_shaderProgram.setAttributeBuffer(1, GL_FLOAT, 3 * static_cast<int>(sizeof(float)), 3, stride);
-
-		glPointSize(2.0f);
-		glDrawArrays(GL_POINTS, 0, entry->vertexCount);
-
-		_shaderProgram.disableAttributeArray(0);
-		_shaderProgram.disableAttributeArray(1);
-		entry->vbo.release();
-		entry->vao.release();
+		const float aspect = (h > 0) ? static_cast<float>(w) / static_cast<float>(h) : 1.0f;
+		const float nearPlane = std::max(0.01f, _distance * 0.001f);
+		const float farPlane = _distance * 10.0f;
+		_projection.setToIdentity();
+		_projection.perspective(Field_Of_View_Degrees, aspect, nearPlane, farPlane);
 	}
 
-	_shaderProgram.release();
-}
-
-/* Clouds ================================================================================== */
-
-PointcloudPreviewWidget::PreparedPointcloud PointcloudPreviewWidget::PreparePointcloud(const Pointcloud::ColorCloud& cloud,
-	const QColor& colorOverride, const QString& name)
-{
-	PreparedPointcloud prepared;
-	prepared.name = name;
-	if (cloud.empty())
+	void PointcloudPreviewWidget::resizeGL(int w, int h)
 	{
+		CancelBrushStroke();
+		glViewport(0, 0, w, std::max(1, h));
+		UpdateProjection(w, std::max(1, h));
+		_overlay->setGeometry(rect());
+	}
+
+	void PointcloudPreviewWidget::UpdateViewMatrix()
+	{
+		_view.setToIdentity();
+		_view.translate(_pan.x(), _pan.y(), -_distance);
+		_view.rotate(_rotationX, 1.0f, 0.0f, 0.0f);
+		_view.rotate(_rotationY, 0.0f, 1.0f, 0.0f);
+		_view.translate(-_center);
+	}
+
+	void PointcloudPreviewWidget::paintGL()
+	{
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LESS);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// Send pending vertex data first, a bounded amount per frame so a large cloud does not
+		// freeze the window; the frames in between keep drawing what is already complete.
+		std::size_t uploadBudget = Upload_Bytes_Per_Frame;
+		bool pending = false;
+		for (auto& entry : _clouds)
+		{
+			if (entry->pendingUpload && uploadBudget)
+				UploadEntry(*entry, uploadBudget);
+			if (!entry->pendingUpload && entry->previous)
+			{
+				// The new buffers are complete: the replaced entry is no longer needed.
+				DestroyEntry(*entry->previous);
+				entry->previous.reset();
+			}
+			pending |= entry->pendingUpload;
+		}
+		if (pending)
+			update();
+
+		UpdateProjection(width(), height());
+		UpdateViewMatrix();
+
+		const QMatrix4x4 mvp = _projection * _view;
+		// While the camera moves a very large scene is drawn decimated: the attribute stride is
+		// widened so the GPU reads one vertex of every `step`, with no extra buffers.
+		const int step = NavigationStep();
+
+		_shaderProgram.bind();
+		_shaderProgram.setUniformValue("u_selection", QVector3D(static_cast<float>(Selection_Color.redF()),
+			static_cast<float>(Selection_Color.greenF()), static_cast<float>(Selection_Color.blueF())));
+
+		// Last row first, so the first row of the panel ends on top.
+		for (auto it = _clouds.rbegin(); it != _clouds.rend(); ++it)
+		{
+			auto& entry = *it;
+			// While a replacement is still uploading, keep drawing the entry it replaces.
+			CloudEntry* drawn = (entry->pendingUpload && entry->previous) ? entry->previous.get() : entry.get();
+			if (!entry->visible || drawn->vertexCount <= 0 || drawn->pendingUpload || !drawn->positions ||
+				!drawn->positions->isCreated() || !drawn->colors.isCreated())
+			{
+				continue;
+			}
+			// Each cloud keeps its depth; the top panel row wins overlapping pixels.
+			glClear(GL_DEPTH_BUFFER_BIT);
+			_shaderProgram.setUniformValue("u_mvp", mvp * entry->transform);
+			const QColor& override = entry->colorOverride;
+			_shaderProgram.setUniformValue("u_override",
+				override.isValid() ? QVector4D(static_cast<float>(override.redF()), static_cast<float>(override.greenF()),
+										 static_cast<float>(override.blueF()), 1.0f)
+								   : QVector4D(0.0f, 0.0f, 0.0f, 0.0f));
+			drawn->vao.bind();
+
+			drawn->positions->bind();
+			_shaderProgram.enableAttributeArray(0);
+			_shaderProgram.setAttributeBuffer(0, GL_FLOAT, 0, 3, step * Position_Bytes);
+			drawn->positions->release();
+
+			drawn->colors.bind();
+			_shaderProgram.enableAttributeArray(1);
+			_shaderProgram.setAttributeBuffer(1, GL_UNSIGNED_BYTE, 0, 4, step * Color_Bytes);
+			drawn->colors.release();
+
+			glPointSize(2.0f);
+			glDrawArrays(GL_POINTS, 0, (drawn->vertexCount - 1) / step + 1);
+
+			_shaderProgram.disableAttributeArray(0);
+			_shaderProgram.disableAttributeArray(1);
+			drawn->vao.release();
+		}
+
+		_shaderProgram.release();
+		glDisable(GL_DEPTH_TEST);
+		_overlay->update();
+	}
+
+	void PointcloudPreviewWidget::MarkNavigating()
+	{
+		_navigating = true;
+		_navigationTimer->start();
+	}
+
+	int PointcloudPreviewWidget::NavigationStep() const
+	{
+		if (!_navigating)
+			return 1;
+		long long visible = 0;
+		for (const auto& entry : _clouds)
+			if (entry->visible)
+				visible += entry->vertexCount;
+		if (visible <= Navigation_Full_Detail_Points)
+			return 1;
+		return static_cast<int>((visible + Navigation_Target_Points - 1) / Navigation_Target_Points);
+	}
+
+	/* Clouds ================================================================================== */
+
+	PointcloudPreviewWidget::PreparedPointcloud PointcloudPreviewWidget::PreparePointcloud(
+		const Pointcloud::ColorCloud& cloud, const std::vector<char>* selection, bool colorsOnly)
+	{
+		PreparedPointcloud prepared;
+		prepared.reusePositions = colorsOnly;
+		if (cloud.empty())
+		{
+			return prepared;
+		}
+
+		const bool useSelection = selection && selection->size() == cloud.size();
+
+		float minX = std::numeric_limits<float>::max(), minY = minX, minZ = minX;
+		float maxX = -std::numeric_limits<float>::max(), maxY = maxX, maxZ = maxX;
+		cv::Vec3d sum(0, 0, 0);
+		double colorSumR = 0.0;
+		double colorSumG = 0.0;
+		double colorSumB = 0.0;
+
+		// Single pass writing through raw pointers: sized for every point, trimmed to the finite
+		// ones. Both buffers skip the same points, so vertex i is the same point in each.
+		if (!colorsOnly)
+			prepared.positions.resize(cloud.size() * 3);
+		prepared.colors.resize(cloud.size() * 4);
+		float* position = prepared.positions.data();
+		unsigned char* color = prepared.colors.data();
+		int count = 0;
+		for (std::size_t i = 0; i < cloud.size(); ++i)
+		{
+			const Pointcloud::ColorPoint& pt = cloud[i];
+			if (!Pointcloud::IsFinite(pt))
+			{
+				continue;
+			}
+			if (!colorsOnly)
+			{
+				sum += cv::Vec3d(pt.x, pt.y, pt.z);
+				// 180 degree rotation around X (OpenCV -> OpenGL): X, -Y, -Z.
+				const float x = pt.x;
+				const float y = -pt.y;
+				const float z = -pt.z;
+				minX = std::min(minX, x);
+				maxX = std::max(maxX, x);
+				minY = std::min(minY, y);
+				maxY = std::max(maxY, y);
+				minZ = std::min(minZ, z);
+				maxZ = std::max(maxZ, z);
+				position[0] = x;
+				position[1] = y;
+				position[2] = z;
+				position += 3;
+				colorSumR += pt.r / 255.0f;
+				colorSumG += pt.g / 255.0f;
+				colorSumB += pt.b / 255.0f;
+			}
+			color[0] = pt.r;
+			color[1] = pt.g;
+			color[2] = pt.b;
+			color[3] = (useSelection && (*selection)[i]) ? 255 : 0;
+			color += 4;
+			++count;
+		}
+
+		prepared.vertexCount = count;
+		prepared.colors.resize(static_cast<std::size_t>(count) * 4);
+		if (colorsOnly)
+		{
+			return prepared;
+		}
+		prepared.positions.resize(static_cast<std::size_t>(count) * 3);
+		if (count)
+		{
+			prepared.centroid = sum * (1.0 / count);
+			prepared.pointColor = QColor::fromRgbF(colorSumR / count, colorSumG / count, colorSumB / count);
+		}
+		prepared.bbMin = QVector3D(minX, minY, minZ);
+		prepared.bbMax = QVector3D(maxX, maxY, maxZ);
 		return prepared;
 	}
 
-	const bool useOverride = colorOverride.isValid();
-	const float cr = static_cast<float>(colorOverride.redF());
-	const float cg = static_cast<float>(colorOverride.greenF());
-	const float cb = static_cast<float>(colorOverride.blueF());
-
-	float minX = std::numeric_limits<float>::max(), minY = minX, minZ = minX;
-	float maxX = -std::numeric_limits<float>::max(), maxY = maxX, maxZ = maxX;
-	double colorSumR = 0.0;
-	double colorSumG = 0.0;
-	double colorSumB = 0.0;
-
-	// Single pass writing through a raw pointer: sized for every point, trimmed to the finite ones.
-	prepared.buffer.resize(cloud.size() * 6);
-	float* out = prepared.buffer.data();
-	for (const auto& pt : cloud)
+	PointcloudPreviewWidget::SceneState PointcloudPreviewWidget::CaptureScene() const
 	{
-		if (!Pointcloud::IsFinite(pt))
-		{
-			continue;
-		}
-		// 180 degree rotation around X (OpenCV -> OpenGL): X, -Y, -Z.
-		const float x = pt.x;
-		const float y = -pt.y;
-		const float z = -pt.z;
-		minX = std::min(minX, x); maxX = std::max(maxX, x);
-		minY = std::min(minY, y); maxY = std::max(maxY, y);
-		minZ = std::min(minZ, z); maxZ = std::max(maxZ, z);
-
-		out[0] = x;
-		out[1] = y;
-		out[2] = z;
-		if (useOverride)
-		{
-			out[3] = cr;
-			out[4] = cg;
-			out[5] = cb;
-		}
-		else
-		{
-			out[3] = pt.r / 255.0f;
-			out[4] = pt.g / 255.0f;
-			out[5] = pt.b / 255.0f;
-			colorSumR += out[3];
-			colorSumG += out[4];
-			colorSumB += out[5];
-		}
-		out += 6;
+		if (_draft)
+			return *_draft;
+		SceneState state;
+		state.activeLayers = _activeLayers;
+		for (const auto& cloud : _clouds)
+			state.clouds.push_back(*cloud);
+		return state;
 	}
 
-	prepared.vertexCount = static_cast<int>((out - prepared.buffer.data()) / 6);
-	prepared.buffer.resize(static_cast<std::size_t>(prepared.vertexCount) * 6);
-	prepared.bbMin = QVector3D(minX, minY, minZ);
-	prepared.bbMax = QVector3D(maxX, maxY, maxZ);
-	prepared.colorOverride = colorOverride;
-	prepared.color = colorOverride;
-	if (!useOverride && prepared.vertexCount > 0)
+	PointcloudPreviewWidget::ProjectState PointcloudPreviewWidget::CaptureProject() const
 	{
-		const double count = static_cast<double>(prepared.vertexCount);
-		prepared.color = QColor::fromRgbF(colorSumR / count, colorSumG / count, colorSumB / count);
-	}
-	return prepared;
-}
-
-int PointcloudPreviewWidget::AddPreparedPointcloud(PreparedPointcloud&& prepared)
-{
-	if (prepared.vertexCount <= 0)
-	{
-		return -1;
+		if (_working || _draft)
+			throw std::logic_error("Finish the current command before saving a project");
+		return { CaptureScene(), _history, _historyPosition, _center, _pan, _centerInitialized, _distance, _rotationX,
+			_rotationY };
 	}
 
-	auto entry = std::make_unique<CloudEntry>();
-	entry->pendingBuffer = std::move(prepared.buffer);
-	entry->sourceCloud = std::move(prepared.sourceCloud);
-	entry->vertexCount = prepared.vertexCount;
-	entry->pendingUpload = true;
-	entry->color = prepared.color;
-	entry->colorOverride = prepared.colorOverride;
-
-	if (_clouds.empty())
+	void PointcloudPreviewWidget::RestoreProject(ProjectState project)
 	{
-		_center = (prepared.bbMin + prepared.bbMax) * 0.5f;
-		_distance = std::max(1.0f, (prepared.bbMax - prepared.bbMin).length() * 1.5f);
-		_rotationX = 0.0f;
-		_rotationY = 0.0f;
-	}
-
-	const int index = static_cast<int>(_clouds.size());
-	entry->name = prepared.name.isEmpty() ? QString("Cloud %1").arg(_cloudCounter) : prepared.name;
-	++_cloudCounter;
-	_clouds.push_back(std::move(entry));
-
-	RebuildCloudList();
-	update();
-	return index;
-}
-
-int PointcloudPreviewWidget::AddPointcloud(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride,
-	const QString& name)
-{
-	if (!cloud)
-	{
-		return -1;
-	}
-	auto prepared = PreparePointcloud(*cloud, colorOverride, name);
-	prepared.sourceCloud = cloud;
-	return AddPreparedPointcloud(std::move(prepared));
-}
-
-int PointcloudPreviewWidget::PrependPointcloud(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride,
-	const QString& name)
-{
-	const int addedIndex = AddPointcloud(cloud, colorOverride, name);
-	if (addedIndex <= 0)
-	{
-		return addedIndex;
-	}
-
-	auto entry = std::move(_clouds.back());
-	_clouds.pop_back();
-	_clouds.insert(_clouds.begin(), std::move(entry));
-	RebuildCloudList();
-	update();
-	return 0;
-}
-
-std::vector<PointcloudPreviewWidget::ListedPointcloud> PointcloudPreviewWidget::Pointclouds() const
-{
-	std::vector<ListedPointcloud> pointclouds;
-	pointclouds.reserve(_clouds.size());
-	for (const auto& entry : _clouds)
-	{
-		if (entry->sourceCloud)
-		{
-			pointclouds.push_back(ListedPointcloud{ entry->sourceCloud, entry->name, entry->visible });
-		}
-	}
-	return pointclouds;
-}
-
-void PointcloudPreviewWidget::SetPointcloudColor(const Pointcloud::ColorCloudPtr& cloud, const QColor& colorOverride)
-{
-	for (int i = 0; i < static_cast<int>(_clouds.size()); ++i)
-	{
-		if (_clouds[i]->sourceCloud == cloud)
-		{
-			SetPointcloudColor(i, colorOverride);
+		if (_working || _draft)
 			return;
-		}
-	}
-}
-
-void PointcloudPreviewWidget::SetAllPointcloudsVisible(bool visible)
-{
-	for (auto& entry : _clouds)
-	{
-		entry->visible = visible;
-	}
-	RebuildCloudList();
-	update();
-}
-
-void PointcloudPreviewWidget::RemovePointcloud(int index)
-{
-	if (index < 0 || index >= static_cast<int>(_clouds.size()))
-	{
-		return;
-	}
-	makeCurrent();
-	DestroyEntry(*_clouds[index]);
-	doneCurrent();
-	_clouds.erase(_clouds.begin() + index);
-
-	RebuildCloudList();
-	update();
-}
-
-void PointcloudPreviewWidget::SetPointcloudVisible(int index, bool visible)
-{
-	if (index < 0 || index >= static_cast<int>(_clouds.size()))
-	{
-		return;
-	}
-	_clouds[index]->visible = visible;
-	RebuildCloudList();
-	update();
-}
-
-void PointcloudPreviewWidget::RenamePointcloud(int index, const QString& name)
-{
-	if (index < 0 || index >= static_cast<int>(_clouds.size()))
-	{
-		return;
-	}
-	const QString trimmedName = name.trimmed();
-	if (!trimmedName.isEmpty())
-	{
-		_clouds[index]->name = trimmedName;
-	}
-}
-
-void PointcloudPreviewWidget::ChoosePointcloudColor(int index)
-{
-	if (index < 0 || index >= static_cast<int>(_clouds.size()))
-	{
-		return;
-	}
-
-	const QStringList colors = {
-		"None", "00529d", "f2a023", "e43b44", "8351bd",
-		"f5f5f5", "03648b", "e5b83f", "d93f4b", "25855b"
-	};
-	const QColor currentOverride = _clouds[index]->colorOverride;
-	QString selected = currentOverride.isValid() ? currentOverride.name(QColor::HexRgb).mid(1) : "None";
-
-	for (;;)
-	{
-		QInputDialog dialog(this);
-		dialog.setWindowTitle(tr("Point cloud color"));
-		dialog.setLabelText(tr("Color (RRGGBB or None):"));
-		dialog.setComboBoxItems(colors);
-		dialog.setComboBoxEditable(true);
-		if (auto* combo = dialog.findChild<QComboBox*>())
-		{
-			combo->setIconSize(QSize(18, 18));
-			for (int colorIndex = 1; colorIndex < colors.size(); ++colorIndex)
+		CancelGizmoDrag();
+		_selectionBoxActive = false;
+		CancelBrushStroke();
+		auto saved = std::make_shared<ProjectState>(std::move(project));
+		_working = true;
+		emit BusyChanged(true);
+		RunBackground<PreparedScene>(
+			this, [saved]() { return PrepareScene(saved->scene, {}); },
+			[this, saved](PreparedScene result)
 			{
-				combo->setItemIcon(colorIndex, ColorPreviewIcon(QColor("#" + colors[colorIndex])));
-			}
-			combo->setItemIcon(0, ColorPreviewIcon(QColor()));
-			combo->setEditText(selected);
-		}
-
-		if (dialog.exec() != QDialog::Accepted)
-		{
-			return;
-		}
-		if (auto* combo = dialog.findChild<QComboBox*>())
-		{
-			selected = combo->currentText().trimmed();
-		}
-		else
-		{
-			selected = dialog.textValue().trimmed();
-		}
-		if (selected.compare("None", Qt::CaseInsensitive) == 0)
-		{
-			SetPointcloudColor(index, QColor());
-			return;
-		}
-		if (selected.startsWith('#'))
-		{
-			selected.remove(0, 1);
-		}
-		if (QRegularExpression("^[0-9A-Fa-f]{6}$").match(selected).hasMatch())
-		{
-			SetPointcloudColor(index, QColor("#" + selected));
-			return;
-		}
-
-		QMessageBox::warning(this, tr("Invalid color"),
-			tr("Enter None or a six-digit hexadecimal color such as 03648b."));
-	}
-}
-
-void PointcloudPreviewWidget::SetPointcloudColor(int index, const QColor& colorOverride)
-{
-	if (index < 0 || index >= static_cast<int>(_clouds.size()) || !_clouds[index]->sourceCloud)
-	{
-		return;
+				int nextId = 0;
+				const auto inspect = [&](const SceneState& scene)
+				{
+					for (const auto& cloud : scene.clouds)
+						nextId = std::max(nextId, cloud.id + 1);
+				};
+				inspect(saved->scene);
+				for (const auto& entry : saved->history)
+					inspect(entry.state);
+				InstallScene(result);
+				_history.swap(saved->history);
+				_historyPosition = saved->historyPosition;
+				_cloudCounter = nextId;
+				_center = saved->center;
+				_pan = saved->pan;
+				_centerInitialized = saved->centerInitialized;
+				_distance = saved->distance;
+				_rotationX = saved->rotationX;
+				_rotationY = saved->rotationY;
+				UpdateViewMatrix();
+				update();
+				emit HistoryChanged();
+				emit ProjectRestored();
+			},
+			[this](std::exception_ptr error) { ReportOperationFailure(error); },
+			[this]() { FinishEdit(); });
 	}
 
-	auto& entry = *_clouds[index];
-	auto prepared = PreparePointcloud(*entry.sourceCloud, colorOverride, entry.name);
-	entry.pendingBuffer = std::move(prepared.buffer);
-	entry.vertexCount = prepared.vertexCount;
-	entry.pendingUpload = true;
-	entry.color = prepared.color;
-	entry.colorOverride = prepared.colorOverride;
+	/* Scene transactions ======================================================================
+	   Read this block top to bottom to follow one change:
 
-	RebuildCloudList();
-	update();
-}
+	     Change() / EditScene()        a function "scene -> next scene" is submitted
+	       Submit()                    runs it now, or queues it behind the edit in progress
+	         StartEdit()               worker: the function, then PrepareScene()
+	                                   GUI:    InstallScene(), then the history entry
+	         FinishEdit()              next queued edit, or idle (BusyChanged(false))
 
-/* Overlay list ============================================================================ */
+	   BeginCommand()/EndCommand() bracket several Change() calls into one edit: while a command is
+	   open the changes go to a draft copy of the scene, and EndCommand() submits the draft. */
 
-void PointcloudPreviewWidget::RebuildCloudList()
-{
-	_cloudListWidget->clear();
-	if (_clouds.empty())
+	void PointcloudPreviewWidget::BeginCommand(const QString& label)
 	{
-		_cloudListWidget->hide();
-		return;
+		if (_draft || _working)
+			throw std::logic_error("Another editor command is pending");
+		_draft = std::make_unique<SceneState>(CaptureScene());
+		_commandLabel = label;
 	}
 
-	for (int i = 0; i < static_cast<int>(_clouds.size()); ++i)
+	void PointcloudPreviewWidget::AbortCommand()
 	{
-		auto* item = new QListWidgetItem();
-		item->setData(Qt::UserRole, i);
+		_draft.reset();
+	}
 
-		auto* row = new QWidget();
-		auto* layout = new QHBoxLayout(row);
-		layout->setContentsMargins(8, 2, 4, 2);
-		layout->setSpacing(6);
+	void PointcloudPreviewWidget::EndCommand()
+	{
+		if (!_draft)
+			return;
+		auto state = std::move(*_draft);
+		_draft.reset();
+		if (!EditorScene::SameScene(CaptureScene(), state))
+			EditScene(_commandLabel, [state](SceneState) { return state; });
+	}
 
-		auto* firstIndicator = new QLabel(row);
-		firstIndicator->setFixedSize(18, 18);
-		if (i == 0)
+	void PointcloudPreviewWidget::Change(const QString& label, const std::function<void(SceneState&)>& edit)
+	{
+		// InstallScene() notifies the panel, which answers by setting the selection it was just
+		// given; that echo must not become a new edit.
+		if (_installing)
+			return;
+		if (_draft)
 		{
-			firstIndicator->setPixmap(QIcon(":/first-pointcloud-icon.svg").pixmap(18, 18));
-			firstIndicator->setToolTip(tr("First point cloud; commands are applied to this entry"));
+			edit(*_draft);
+			return;
 		}
-
-		auto* colorIndicator = new QToolButton(row);
-		colorIndicator->setObjectName("pointcloud_overlay_color");
-		colorIndicator->setFixedSize(18, 18);
-		colorIndicator->setToolTip(_clouds[i]->colorOverride.isValid()
-			? tr("Change point cloud color")
-			: tr("Change point cloud color (None: using point colors)"));
-		colorIndicator->setCursor(Qt::PointingHandCursor);
-		const QColor color = _clouds[i]->color.isValid() ? _clouds[i]->color : QColor(200, 200, 200);
-		colorIndicator->setStyleSheet(QString("QToolButton { background-color: %1; "
-			"border: 1px solid rgba(255, 255, 255, 120); border-radius: 9px; }")
-			.arg(color.name(QColor::HexRgb)));
-		connect(colorIndicator, &QToolButton::clicked, this, [this, i]() { ChoosePointcloudColor(i); });
-
-		auto* indexLabel = new QLabel(QString("#%1").arg(i + 1), row);
-		indexLabel->setObjectName("pointcloud_overlay_label");
-
-		auto* nameEdit = new QLineEdit(_clouds[i]->name, row);
-		nameEdit->setObjectName("pointcloud_overlay_name");
-		nameEdit->setProperty("cloudIndex", i);
-		nameEdit->setReadOnly(true);
-		nameEdit->setFrame(false);
-		nameEdit->setMinimumWidth(40);
-		nameEdit->setCursor(Qt::ArrowCursor);
-		nameEdit->installEventFilter(this);
-		connect(nameEdit, &QLineEdit::editingFinished, this, [this, i, nameEdit]() {
-			RenamePointcloud(i, nameEdit->text());
-			if (i >= 0 && i < static_cast<int>(_clouds.size()))
+		EditScene(label,
+			[edit](SceneState state)
 			{
-				nameEdit->setText(_clouds[i]->name);
+				edit(state);
+				return state;
+			});
+	}
+
+	PointcloudPreviewWidget::PreparedScene PointcloudPreviewWidget::PrepareScene(
+		SceneState state, const SceneState& before)
+	{
+		// Runs on the worker. What must be rebuilt depends on what changed in each cloud:
+		//   - new point data      -> positions, colors and the derived geometry;
+		//   - new selection only  -> colors only (the selection flag travels in the color buffer);
+		//   - anything else (color override, name, visibility, order) -> nothing: the override is a
+		//     shader uniform and the rest is not vertex data.
+		PreparedScene prepared;
+		prepared.state = std::move(state);
+		prepared.buffers.resize(prepared.state.clouds.size());
+		for (std::size_t i = 0; i < prepared.state.clouds.size(); ++i)
+		{
+			auto& cloud = prepared.state.clouds[i];
+			const auto old = std::find_if(
+				before.clouds.begin(), before.clouds.end(), [&](const CloudState& c) { return c.id == cloud.id; });
+			const bool known = old != before.clouds.end();
+			const bool newPoints = !known || old->sourceCloud != cloud.sourceCloud;
+			if (newPoints && cloud.sourceCloud)
+			{
+				auto buffer = PreparePointcloud(*cloud.sourceCloud, cloud.selection.get());
+				cloud.vertexCount = buffer.vertexCount;
+				cloud.centroid = buffer.centroid;
+				cloud.pointColor = buffer.pointColor;
+				cloud.bbMin = buffer.bbMin;
+				cloud.bbMax = buffer.bbMax;
+				prepared.buffers[i] = std::move(buffer);
 			}
-			nameEdit->setReadOnly(true);
-			nameEdit->setCursor(Qt::ArrowCursor);
-		});
-
-		auto* pointCountLabel = new QLabel(QString("(%1 pts)").arg(_clouds[i]->vertexCount), row);
-		pointCountLabel->setObjectName("pointcloud_overlay_label");
-
-		const bool visible = _clouds[i]->visible;
-		auto* visibilityButton = new QToolButton(row);
-		visibilityButton->setObjectName("pointcloud_overlay_visibility");
-		visibilityButton->setFixedSize(22, 22);
-		visibilityButton->setIcon(QIcon(visible ? ":/eye-icon.svg" : ":/eye-closed-close.svg"));
-		visibilityButton->setIconSize(QSize(18, 18));
-		visibilityButton->setToolTip(visible ? tr("Hide point cloud") : tr("Show point cloud"));
-		visibilityButton->setCursor(Qt::PointingHandCursor);
-		connect(visibilityButton, &QToolButton::clicked, this,
-			[this, i, visible]() { SetPointcloudVisible(i, !visible); });
-
-		auto* deleteButton = new QToolButton(row);
-		deleteButton->setObjectName("pointcloud_overlay_delete");
-		deleteButton->setFixedSize(22, 22);
-		deleteButton->setIcon(QIcon(":/trash-icon.svg"));
-		deleteButton->setIconSize(QSize(16, 16));
-		deleteButton->setToolTip(tr("Remove point cloud"));
-		deleteButton->setCursor(Qt::PointingHandCursor);
-		connect(deleteButton, &QToolButton::clicked, this, [this, i]() { RemovePointcloud(i); });
-
-		layout->addWidget(firstIndicator, 0, Qt::AlignVCenter);
-		layout->addWidget(colorIndicator, 0, Qt::AlignVCenter);
-		layout->addWidget(indexLabel, 0);
-		layout->addWidget(nameEdit, 1);
-		layout->addWidget(pointCountLabel, 0);
-		layout->addWidget(visibilityButton, 0);
-		layout->addWidget(deleteButton, 0);
-
-		item->setSizeHint(QSize(0, 30));
-		_cloudListWidget->addItem(item);
-		_cloudListWidget->setItemWidget(item, row);
-	}
-
-	_cloudListWidget->show();
-	RepositionOverlay();
-}
-
-void PointcloudPreviewWidget::RepositionOverlay()
-{
-	if (!_cloudListWidget || _cloudListWidget->isHidden())
-	{
-		return;
-	}
-	const int margin = 10;
-	const int itemHeight = 30;
-	const int idealHeight = _cloudListWidget->count() * itemHeight + 8;
-	const int maxHeight = height() / 2;
-	const int h = std::min(idealHeight, std::max(maxHeight, itemHeight + 8));
-	const int w = _cloudListWidget->width();
-
-	_cloudListWidget->setGeometry(width() - w - margin, margin, w, h);
-	_cloudListWidget->raise();
-}
-
-void PointcloudPreviewWidget::OnCloudListReordered()
-{
-	const int count = _cloudListWidget->count();
-	std::vector<std::unique_ptr<CloudEntry>> reordered;
-	reordered.reserve(count);
-
-	for (int i = 0; i < count; ++i)
-	{
-		const int oldIndex = _cloudListWidget->item(i)->data(Qt::UserRole).toInt();
-		if (oldIndex >= 0 && oldIndex < static_cast<int>(_clouds.size()) && _clouds[oldIndex])
-		{
-			reordered.push_back(std::move(_clouds[oldIndex]));
+			else if (known)
+			{
+				// Derived geometry follows immutable points, including restored history snapshots.
+				cloud.vertexCount = old->vertexCount;
+				cloud.centroid = old->centroid;
+				cloud.pointColor = old->pointColor;
+				cloud.bbMin = old->bbMin;
+				cloud.bbMax = old->bbMax;
+				if (old->selection != cloud.selection && cloud.sourceCloud)
+					prepared.buffers[i] = PreparePointcloud(*cloud.sourceCloud, cloud.selection.get(), true);
+			}
+			// The swatch of the layer list: the override, or the mean color of the points.
+			cloud.color = cloud.colorOverride.isValid() ? cloud.colorOverride : cloud.pointColor;
 		}
+		// Layers that no longer exist or are hidden cannot stay active.
+		auto& ids = prepared.state.activeLayers;
+		ids.erase(std::remove_if(ids.begin(), ids.end(),
+					  [&](int id)
+					  {
+						  return std::none_of(prepared.state.clouds.begin(), prepared.state.clouds.end(),
+							  [&](const CloudState& c) { return c.id == id && c.visible; });
+					  }),
+			ids.end());
+		return prepared;
 	}
-	_clouds = std::move(reordered);
 
-	RebuildCloudList();
-	update();
-}
-
-bool PointcloudPreviewWidget::eventFilter(QObject* obj, QEvent* event)
-{
-	if (auto* nameEdit = qobject_cast<QLineEdit*>(obj))
+	void PointcloudPreviewWidget::InstallScene(PreparedScene& prepared)
 	{
-		if (event->type() == QEvent::MouseButtonDblClick)
+		// Runs on the GUI thread. Builds the new list of GPU entries: a fresh entry (uploaded over
+		// the next frames) for each cloud PrepareScene() rebuilt, the existing entry for the rest.
+		auto activeLayers = prepared.state.activeLayers;
+		std::vector<int> oldIds;
+		for (const auto& c : _clouds)
+			oldIds.push_back(c->id);
+		std::vector<std::unique_ptr<CloudEntry>> next(prepared.state.clouds.size());
+		// Allocate everything before moving live GPU entries, so allocation failures leave the scene intact.
+		for (std::size_t i = 0; i < next.size(); ++i)
 		{
-			nameEdit->setReadOnly(false);
-			nameEdit->setCursor(Qt::IBeamCursor);
-			nameEdit->setFocus(Qt::MouseFocusReason);
-			nameEdit->selectAll();
-			return true;
+			if (prepared.buffers[i])
+			{
+				next[i] = std::make_unique<CloudEntry>();
+				static_cast<CloudState&>(*next[i]) = prepared.state.clouds[i];
+				next[i]->pendingPositions = std::move(prepared.buffers[i]->positions);
+				next[i]->pendingColors = std::move(prepared.buffers[i]->colors);
+				next[i]->pendingUpload = true;
+			}
 		}
+		std::vector<std::unique_ptr<CloudEntry>> retired;
+		for (std::size_t i = 0; i < next.size(); ++i)
+		{
+			const std::size_t old = static_cast<std::size_t>(
+				std::find(oldIds.begin(), oldIds.end(), prepared.state.clouds[i].id) - oldIds.begin());
+			const bool known = old < _clouds.size() && _clouds[old];
+			if (!next[i])
+			{
+				// Unchanged cloud: keep its GPU entry. A cloud that is neither prepared nor known (a
+				// state without points) gets an empty entry instead of indexing past the old list.
+				next[i] = known ? std::move(_clouds[old]) : std::make_unique<CloudEntry>();
+				static_cast<CloudState&>(*next[i]) = prepared.state.clouds[i];
+				continue;
+			}
+
+			if (prepared.buffers[i]->reusePositions)
+			{
+				// Only the colors were rebuilt. The positions come from the entry being replaced:
+				// its GPU buffer when it is complete, otherwise the data it had not finished sending.
+				CloudEntry* source = known ? _clouds[old].get() : nullptr;
+				const bool complete = source && source->positions && source->positions->isCreated() &&
+					source->pendingPositions.empty();
+				if (complete)
+					next[i]->positions = source->positions;
+				else if (source && !source->pendingPositions.empty())
+					next[i]->pendingPositions = std::move(source->pendingPositions);
+				else if (next[i]->sourceCloud)
+					next[i]->pendingPositions = PreparePointcloud(*next[i]->sourceCloud).positions;  // not expected
+			}
+			if (known)
+			{
+				// The last complete entry of this cloud stays on screen until the new one is uploaded.
+				std::unique_ptr<CloudEntry> shown = std::move(_clouds[old]);
+				if (shown->pendingUpload)
+				{
+					std::unique_ptr<CloudEntry> older = std::move(shown->previous);
+					retired.push_back(std::move(shown));
+					shown = std::move(older);
+				}
+				if (shown && shown->vertexCount > 0 && shown->positions && shown->positions->isCreated() &&
+					shown->colors.isCreated())
+					next[i]->previous = std::move(shown);
+				else if (shown)
+					retired.push_back(std::move(shown));
+			}
+		}
+		const bool valid = context() && context()->isValid();
+		if (valid)
+			makeCurrent();
+		for (auto& old : _clouds)
+			if (old && valid)
+				DestroyEntry(*old);
+		for (auto& old : retired)
+			if (valid)
+				DestroyEntry(*old);
+		if (valid)
+			doneCurrent();
+		_clouds = std::move(next);
+		_activeLayers = std::move(activeLayers);
+		if (!_centerInitialized)
+		{
+			const auto first =
+				std::find_if(_clouds.begin(), _clouds.end(), [](const auto& c) { return c->vertexCount > 0; });
+			if (first != _clouds.end())
+			{
+				const auto c = (*first)->centroid;
+				_center = QVector3D(c[0], -c[1], -c[2]);
+				_centerInitialized = true;
+				FrameSelection();
+			}
+		}
+		// Listeners refresh from the new scene; _installing ignores the edits they request back.
+		_installing = true;
+		LayersChanged();
+		emit ActiveLayersRestored();
+		emit SelectionChanged();
+		_installing = false;
 	}
-	return QOpenGLWidget::eventFilter(obj, event);
-}
 
-void PointcloudPreviewWidget::resizeEvent(QResizeEvent* event)
-{
-	QOpenGLWidget::resizeEvent(event);
-	RepositionOverlay();
-}
-
-/* GPU ===================================================================================== */
-
-void PointcloudPreviewWidget::UploadEntry(CloudEntry& entry)
-{
-	if (!entry.vao.isCreated())
+	void PointcloudPreviewWidget::EditScene(const QString& label, std::function<SceneState(SceneState)> work)
 	{
-		entry.vao.create();
+		Submit(label, std::move(work));
 	}
-	if (!entry.vbo.isCreated())
+
+	void PointcloudPreviewWidget::Submit(
+		const QString& label, std::function<SceneState(SceneState)> work, int restorePosition)
 	{
-		entry.vbo.create();
+		if (_draft)
+		{
+			// An open command owns the scene: its changes go to the draft through Change().
+			return;
+		}
+		PendingEdit edit{ label, std::move(work), restorePosition };
+		if (_working)
+		{
+			// One edit at a time. This one will start from the scene the current one leaves.
+			_pendingEdits.push_back(std::move(edit));
+			return;
+		}
+		_working = true;
+		emit BusyChanged(true);
+		StartEdit(std::move(edit));
 	}
-	entry.vbo.bind();
-	entry.vbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-	entry.vbo.allocate(entry.pendingBuffer.data(), static_cast<int>(entry.pendingBuffer.size() * sizeof(float)));
-	entry.vbo.release();
 
-	entry.pendingBuffer.clear();
-	entry.pendingBuffer.shrink_to_fit();
-	entry.pendingUpload = false;
-}
-
-void PointcloudPreviewWidget::DestroyEntry(CloudEntry& entry)
-{
-	if (entry.vao.isCreated())
+	void PointcloudPreviewWidget::StartEdit(PendingEdit edit)
 	{
-		entry.vao.destroy();
+		// The worker receives copies: `before` to compute the edit from, and to tell which clouds
+		// changed and need a new GPU buffer.
+		const auto before = CaptureScene();
+		const QString label = edit.label;
+		const int restorePosition = edit.restorePosition;
+		RunBackground<PreparedScene>(
+			this, [before, work = std::move(edit.work)]() { return PrepareScene(work(before), before); },
+			[this, before, label, restorePosition](PreparedScene result)
+			{
+				// Back on the GUI thread. An edit that changed nothing leaves no history entry.
+				if (restorePosition < 0 && EditorScene::SameScene(before, result.state))
+					return;
+				// The new history is built aside and swapped in only after the scene is installed,
+				// so a failure in between leaves scene and history consistent.
+				auto history = _history;
+				int position = restorePosition;
+				if (restorePosition < 0)
+				{
+					history.resize(_historyPosition + 1);  // a new edit discards the redo branch
+					history.push_back({ label, result.state });
+					EditorScene::TrimHistory(history, Max_History_Entries, _historyByteBudget);
+					position = static_cast<int>(history.size()) - 1;
+				}
+				InstallScene(result);
+				_history.swap(history);
+				_historyPosition = position;
+				emit HistoryChanged();
+			},
+			[this](std::exception_ptr error)
+			{
+				// The edits that were waiting assumed this one would succeed.
+				_pendingEdits.clear();
+				ReportOperationFailure(error);
+			},
+			[this]() { FinishEdit(); });
 	}
-	if (entry.vbo.isCreated())
+
+	void PointcloudPreviewWidget::FinishEdit()
 	{
-		entry.vbo.destroy();
+		if (!_pendingEdits.empty())
+		{
+			PendingEdit next = std::move(_pendingEdits.front());
+			_pendingEdits.erase(_pendingEdits.begin());
+			StartEdit(std::move(next));
+			return;
+		}
+		_working = false;
+		emit BusyChanged(false);
 	}
-}
 
-/* Mouse =================================================================================== */
-
-void PointcloudPreviewWidget::mousePressEvent(QMouseEvent* event)
-{
-	_lastMousePos = event->pos();
-	event->accept();
-}
-
-void PointcloudPreviewWidget::mouseMoveEvent(QMouseEvent* event)
-{
-	const int dx = event->x() - _lastMousePos.x();
-	const int dy = event->y() - _lastMousePos.y();
-
-	if (event->buttons() & Qt::LeftButton)
+	void PointcloudPreviewWidget::ReportOperationFailure(std::exception_ptr error)
 	{
-		_rotationY += dx * 0.5f;
-		_rotationX = std::clamp(_rotationX + dy * 0.5f, -90.0f, 90.0f);
+		_installing = false;
+		try
+		{
+			std::rethrow_exception(error);
+		}
+		catch (const std::exception& e)
+		{
+			emit OperationFailed(QString::fromUtf8(e.what()));
+		}
+		catch (...)
+		{
+			emit OperationFailed(tr("Unknown editor error."));
+		}
+		for (auto& cloud : _clouds)
+			cloud->transform.setToIdentity();
+		update();
 	}
-	else if (event->buttons() & Qt::MiddleButton)
+	QStringList PointcloudPreviewWidget::HistoryLabels() const
 	{
-		const float panSpeed = _distance * 0.001f;
-		QMatrix4x4 rot;
-		rot.rotate(_rotationX, 1.0f, 0.0f, 0.0f);
-		rot.rotate(_rotationY, 0.0f, 1.0f, 0.0f);
-		const QVector3D right(rot(0, 0), rot(1, 0), rot(2, 0));
-		const QVector3D up(rot(0, 1), rot(1, 1), rot(2, 1));
-		_center -= right * (dx * panSpeed);
-		_center += up * (dy * panSpeed);
+		QStringList labels;
+		for (const auto& item : _history)
+			labels << item.label;
+		return labels;
+	}
+	void PointcloudPreviewWidget::Undo()
+	{
+		JumpToHistory(_historyPosition - 1);
+	}
+	void PointcloudPreviewWidget::Redo()
+	{
+		JumpToHistory(_historyPosition + 1);
+	}
+	void PointcloudPreviewWidget::JumpToHistory(int position)
+	{
+		if (position < 0 || position >= static_cast<int>(_history.size()) || position == _historyPosition || _working ||
+			_draft)
+			return;
+		CancelGizmoDrag();
+		_selectionBoxActive = false;
+		CancelBrushStroke();
+		const auto state = _history[position].state;
+		Submit(tr("Restore history"), [state](SceneState) { return state; }, position);
+	}
+	int PointcloudPreviewWidget::AddPointcloud(
+		const Pointcloud::ColorCloudPtr& cloud, const QColor& color, const QString& name, const QString& details)
+	{
+		if (!cloud || cloud->empty())
+			return -1;
+		CloudState entry;
+		entry.sourceCloud = cloud;
+		entry.name = name;
+		entry.details = details;
+		entry.colorOverride = color;
+		entry.id = _cloudCounter++;
+		Change(tr("Add point cloud"),
+			[entry](SceneState& state)
+			{
+				if (state.clouds.empty())
+					state.activeLayers = { entry.id };
+				state.clouds.push_back(entry);
+			});
+		return entry.id;
+	}
+	int PointcloudPreviewWidget::PrependPointcloud(
+		const Pointcloud::ColorCloudPtr& cloud, const QColor& color, const QString& name, const QString& details)
+	{
+		if (!cloud || cloud->empty())
+			return -1;
+		CloudState entry;
+		entry.sourceCloud = cloud;
+		entry.name = name;
+		entry.details = details;
+		entry.colorOverride = color;
+		entry.id = _cloudCounter++;
+		Change(
+			tr("Add result cloud"), [entry](SceneState& state) { state.clouds.insert(state.clouds.begin(), entry); });
+		return entry.id;
+	}
+	std::vector<PointcloudPreviewWidget::ListedPointcloud> PointcloudPreviewWidget::Pointclouds() const
+	{
+		std::vector<ListedPointcloud> result;
+		VisitClouds([&](const CloudState& c) { result.push_back({ c.sourceCloud, c.name, c.visible, c.id }); });
+		return result;
+	}
+	std::vector<PointcloudPreviewWidget::LayerInfo> PointcloudPreviewWidget::Layers() const
+	{
+		std::vector<LayerInfo> result;
+		VisitClouds([&](const CloudState& c)
+			{ result.push_back({ c.name, c.details, c.color, c.colorOverride, c.vertexCount, c.visible, c.id }); });
+		return result;
+	}
+	Pointcloud::ColorCloudPtr PointcloudPreviewWidget::Cloud(int index) const
+	{
+		Pointcloud::ColorCloudPtr found;
+		int position = 0;
+		VisitClouds([&](const CloudState& c)
+			{
+				if (position++ == index)
+					found = c.sourceCloud;
+			});
+		return found;
+	}
+	int PointcloudPreviewWidget::IndexOfLayer(int id) const
+	{
+		int found = -1, position = 0;
+		VisitClouds([&](const CloudState& c)
+			{
+				if (c.id == id && found < 0)
+					found = position;
+				++position;
+			});
+		return found;
+	}
+	bool PointcloudPreviewWidget::FindLayer(int id, LayerInfo& info, Pointcloud::ColorCloudPtr* cloud) const
+	{
+		bool found = false;
+		VisitClouds([&](const CloudState& c)
+			{
+				if (c.id != id || found)
+					return;
+				found = true;
+				info = { c.name, c.details, c.color, c.colorOverride, c.vertexCount, c.visible, c.id };
+				if (cloud)
+					*cloud = c.sourceCloud;
+			});
+		return found;
+	}
+	void PointcloudPreviewWidget::SetLayerColor(int id, const QColor& color)
+	{
+		Change(tr("Change color"),
+			[=](SceneState& state)
+			{
+				for (auto& cloud : state.clouds)
+					if (cloud.id == id)
+						cloud.colorOverride = color;
+			});
+	}
+	void PointcloudPreviewWidget::SetPointcloudColor(int index, const QColor& color)
+	{
+		Change(tr("Change color"),
+			[=](SceneState& state)
+			{
+				if (index >= 0 && index < static_cast<int>(state.clouds.size()))
+					state.clouds[index].colorOverride = color;
+			});
+	}
+	void PointcloudPreviewWidget::RenamePointcloud(int index, const QString& name)
+	{
+		Change(tr("Rename point cloud"),
+			[=](SceneState& state)
+			{
+				if (index >= 0 && index < static_cast<int>(state.clouds.size()) && !name.trimmed().isEmpty())
+					state.clouds[index].name = name.trimmed();
+			});
+	}
+	void PointcloudPreviewWidget::RemovePointcloud(int index)
+	{
+		Change(tr("Remove point cloud"),
+			[=](SceneState& state)
+			{
+				if (index >= 0 && index < static_cast<int>(state.clouds.size()))
+					state.clouds.erase(state.clouds.begin() + index);
+			});
+	}
+	void PointcloudPreviewWidget::RemoveSelectedPointclouds()
+	{
+		EditScene(tr("Delete selected point clouds"), [](SceneState scene) { return EditorScene::RemoveActive(std::move(scene)); });
+	}
+	void PointcloudPreviewWidget::SetPointcloudVisible(int index, bool visible)
+	{
+		Change(tr("Change visibility"),
+			[=](SceneState& state)
+			{
+				if (index >= 0 && index < static_cast<int>(state.clouds.size()))
+				{
+					auto& c = state.clouds[index];
+					c.visible = visible;
+					if (!visible)
+					{
+						c.selection.reset();
+						c.selectedCount = 0;
+					}
+				}
+			});
+	}
+	void PointcloudPreviewWidget::SetAllPointcloudsVisible(bool visible)
+	{
+		Change(tr("Change visibility"),
+			[=](SceneState& state)
+			{
+				for (auto& c : state.clouds)
+				{
+					c.visible = visible;
+					if (!visible)
+					{
+						c.selection.reset();
+						c.selectedCount = 0;
+					}
+				}
+			});
+	}
+	void PointcloudPreviewWidget::ReplacePointcloud(
+		int index, const Pointcloud::ColorCloudPtr& cloud, const QString& details)
+	{
+		Change(tr("Replace point cloud"),
+			[=](SceneState& state)
+			{
+				if (index >= 0 && index < static_cast<int>(state.clouds.size()) && cloud)
+				{
+					auto& c = state.clouds[index];
+					c.sourceCloud = cloud;
+					c.details = details;
+					c.selection.reset();
+					c.selectedCount = 0;
+				}
+			});
+	}
+	void PointcloudPreviewWidget::ReorderPointclouds(const std::vector<int>& order)
+	{
+		Change(tr("Reorder point clouds"),
+			[=](SceneState& state)
+			{
+				if (order.size() != state.clouds.size())
+					return;
+				auto clouds = state.clouds;
+				std::vector<bool> seen(order.size());
+				for (std::size_t i = 0; i < order.size(); ++i)
+				{
+					if (order[i] < 0 || order[i] >= static_cast<int>(order.size()) || seen[order[i]])
+						return;
+					seen[order[i]] = true;
+					clouds[i] = state.clouds[order[i]];
+				}
+				state.clouds = std::move(clouds);
+			});
+	}
+	void PointcloudPreviewWidget::SetActiveLayersTransform(const QMatrix4x4& transform)
+	{
+		for (auto& c : _clouds)
+			if (c->visible && std::find(_activeLayers.begin(), _activeLayers.end(), c->id) != _activeLayers.end())
+				c->transform = transform;
+		update();
 	}
 
-	_lastMousePos = event->pos();
-	update();
-	event->accept();
-}
 
-void PointcloudPreviewWidget::wheelEvent(QWheelEvent* event)
-{
-	const float delta = event->angleDelta().y() / 120.0f;
-	_distance = std::clamp(_distance * (1.0f - delta * 0.1f), 1.0f, 100000.0f);
-	update();
-	event->accept();
-}
+	/* Selection =============================================================================== */
 
+	void PointcloudPreviewWidget::SetSelectionMode(bool enabled)
+	{
+		_selectionMode = enabled;
+		_selectionBoxActive = false;
+		SetBrushSelectionMode(false);
+		if (enabled)
+			setCursor(Qt::CrossCursor);
+		else
+			unsetCursor();
+		update();
+	}
+	void PointcloudPreviewWidget::SetBrushSelectionMode(bool enabled)
+	{
+		CancelBrushStroke();
+		_brushSelectionMode = enabled;
+		if (enabled)
+		{
+			_selectionMode = false;
+			_selectionBoxActive = false;
+			_brushPosition = mapFromGlobal(QCursor::pos());
+			_brushCursorVisible = rect().contains(_brushPosition.toPoint());
+			setCursor(Qt::BlankCursor);
+		}
+		else if (!_selectionMode)
+			unsetCursor();
+		setMouseTracking(enabled || _gizmoLayerId >= 0);
+		update();
+	}
+	void PointcloudPreviewWidget::CancelBrushStroke()
+	{
+		_brushStrokeActive = false;
+		_brushStroke.clear();
+		update();
+	}
+	void PointcloudPreviewWidget::AppendBrushSample(const QPointF& position)
+	{
+		_brushPosition = position;
+		if (_brushStroke.empty() || _brushStroke.back().position != position ||
+			_brushStroke.back().radius != _brushRadius)
+			_brushStroke.push_back({ position, _brushRadius });
+	}
+	void PointcloudPreviewWidget::SelectBrushStroke()
+	{
+		// The stroke and the camera it was painted with travel to the worker by value.
+		auto samples = std::move(_brushStroke);
+		const auto matrix = _brushMatrix;
+		const auto viewport = _brushViewport;
+		EditScene(tr("Brush select points"),
+			[samples, matrix, viewport](SceneState scene)
+			{ return EditorScene::SelectBrushStroke(std::move(scene), samples, matrix, viewport); });
+	}
+
+	void PointcloudPreviewWidget::ClearSelection()
+	{
+		Change(tr("Clear point selection"), [](SceneState& scene) { scene = EditorScene::ClearSelection(std::move(scene)); });
+	}
+	std::size_t PointcloudPreviewWidget::SelectedPointCount() const
+	{
+		std::size_t count = 0;
+		VisitClouds([&](const CloudState& c) { count += c.selectedCount; });
+		return count;
+	}
+	int PointcloudPreviewWidget::SelectedLayerCount() const
+	{
+		int count = 0;
+		VisitClouds([&](const CloudState& c) { count += c.selectedCount > 0; });
+		return count;
+	}
+	std::vector<char> PointcloudPreviewWidget::Selection(int index) const
+	{
+		const auto state = CaptureScene();
+		return index >= 0 && index < static_cast<int>(state.clouds.size()) && state.clouds[index].selection
+			? *state.clouds[index].selection
+			: std::vector<char>();
+	}
+	void PointcloudPreviewWidget::SelectInRectangle(const QRect& rect, Qt::KeyboardModifiers modifiers)
+	{
+		if (_working)
+			return;
+		const bool add = modifiers & Qt::ShiftModifier, remove = modifiers & Qt::ControlModifier;
+		if (rect.width() < Selection_Click_Pixels && rect.height() < Selection_Click_Pixels)
+		{
+			// A click without dragging clears the selection.
+			if (!add && !remove)
+				ClearSelection();
+			return;
+		}
+		UpdateProjection(width(), height());
+		UpdateViewMatrix();
+		const auto matrix = _projection * _view;
+		// Widget pixels to normalized device coordinates (y grows upward there).
+		EditorScene::NdcRect bounds;
+		bounds.left = 2.0f * rect.left() / std::max(1, width()) - 1;
+		bounds.right = 2.0f * (rect.right() + 1) / std::max(1, width()) - 1;
+		bounds.top = 1 - 2.0f * rect.top() / std::max(1, height());
+		bounds.bottom = 1 - 2.0f * (rect.bottom() + 1) / std::max(1, height());
+		EditScene(tr("Select points"),
+			[=](SceneState scene) { return EditorScene::SelectInRectangle(std::move(scene), matrix, bounds, add, remove); });
+	}
+	void PointcloudPreviewWidget::DeleteSelectedPoints()
+	{
+		EditScene(tr("Delete selected points"), [](SceneState scene) { return EditorScene::DeleteSelectedPoints(std::move(scene)); });
+	}
+	void PointcloudPreviewWidget::TransformSelected(const cv::Matx44d& transform, const QString& description)
+	{
+		EditScene(description,
+			[=](SceneState scene) { return EditorScene::TransformActive(std::move(scene), transform, description); });
+	}
+
+	void PointcloudPreviewWidget::AlignSelectedCentroids()
+	{
+		EditScene(tr("Align centroids"), [](SceneState scene) { return EditorScene::AlignActiveCentroids(std::move(scene)); });
+	}
+
+	void PointcloudPreviewWidget::MergeSelectedPointclouds()
+	{
+		// The id is taken here, on the GUI thread, so it is never reused even if the edit fails.
+		const int mergedId = _cloudCounter++;
+		EditScene(tr("Merge point clouds"),
+			[mergedId](SceneState scene) { return EditorScene::MergeActive(std::move(scene), mergedId); });
+	}
+
+	void PointcloudPreviewWidget::LayersChanged()
+	{
+		UpdateGizmoPivot();
+		update();
+		emit PointcloudsChanged();
+	}
+
+	/* Active layers and framing =============================================================== */
+
+	void PointcloudPreviewWidget::SetActiveLayers(const std::vector<int>& ids)
+	{
+		if (_installing)
+			return;
+		CancelGizmoDrag();
+		CancelBrushStroke();
+		Change(tr("Select point clouds"),
+			[=](SceneState& state)
+			{
+				state.activeLayers = ids;
+				for (auto& c : state.clouds)
+					if (std::find(ids.begin(), ids.end(), c.id) == ids.end())
+					{
+						c.selection.reset();
+						c.selectedCount = 0;
+					}
+			});
+	}
+	cv::Vec3d PointcloudPreviewWidget::SelectionCentroid() const
+	{
+		cv::Vec3d center(0, 0, 0);
+		std::size_t count = 0;
+		for (const auto& c : CaptureScene().clouds)
+			if (c.visible && std::find(_activeLayers.begin(), _activeLayers.end(), c.id) != _activeLayers.end())
+			{
+				center += c.centroid * c.vertexCount;
+				count += c.vertexCount;
+			}
+		return count ? center * (1.0 / count) : center;
+	}
+	void PointcloudPreviewWidget::FrameSelection()
+	{
+		_pan = QVector3D();
+		float radius = 1;
+		for (const auto& cloud : _clouds)
+			if (cloud->visible &&
+				std::find(_activeLayers.begin(), _activeLayers.end(), cloud->id) != _activeLayers.end())
+				for (int corner = 0; corner < 8; ++corner)
+				{
+					QVector3D point((corner & 1) ? cloud->bbMax.x() : cloud->bbMin.x(),
+						(corner & 2) ? cloud->bbMax.y() : cloud->bbMin.y(),
+						(corner & 4) ? cloud->bbMax.z() : cloud->bbMin.z());
+					radius = std::max(radius, (point - _center).length());
+				}
+		_distance = radius * 3;
+		update();
+	}
+
+	/* GPU ===================================================================================== */
+
+	void PointcloudPreviewWidget::UploadEntry(CloudEntry& entry, std::size_t& budget)
+	{
+		const std::size_t positionBytes = entry.pendingPositions.size() * sizeof(float);
+		const std::size_t colorBytes = entry.pendingColors.size();
+		const std::size_t limit = static_cast<std::size_t>(std::numeric_limits<int>::max());
+		if (positionBytes > limit || colorBytes > limit)
+		{
+			// QOpenGLBuffer sizes are int: a cloud this large cannot be drawn. Keep the scene usable.
+			qWarning() << "PointcloudPreviewWidget: cloud" << entry.name << "is too large to display";
+			entry.pendingPositions = std::vector<float>();
+			entry.pendingColors = std::vector<unsigned char>();
+			entry.pendingUpload = false;
+			entry.vertexCount = 0;
+			return;
+		}
+		if (!entry.vao.isCreated())
+			entry.vao.create();
+
+		// Sends up to `budget` bytes of `data` to `buffer`, allocating it on the first call.
+		const auto send = [&budget](QOpenGLBuffer& buffer, const void* data, std::size_t bytes, std::size_t& uploaded)
+		{
+			if (!buffer.isCreated())
+				buffer.create();
+			buffer.bind();
+			if (uploaded == 0)
+			{
+				buffer.setUsagePattern(QOpenGLBuffer::StaticDraw);
+				buffer.allocate(nullptr, static_cast<int>(bytes));
+			}
+			const std::size_t count = std::min(budget, bytes - uploaded);
+			buffer.write(static_cast<int>(uploaded), static_cast<const char*>(data) + uploaded, static_cast<int>(count));
+			uploaded += count;
+			budget -= count;
+			buffer.release();
+			return uploaded == bytes;
+		};
+
+		// Positions first (when this entry has its own), then colors.
+		if (positionBytes > 0)
+		{
+			if (!entry.positions)
+				entry.positions = std::make_shared<QOpenGLBuffer>(QOpenGLBuffer::VertexBuffer);
+			if (!send(*entry.positions, entry.pendingPositions.data(), positionBytes, entry.uploadedPositionBytes))
+				return;
+			entry.pendingPositions = std::vector<float>();
+		}
+		if (colorBytes > 0)
+		{
+			if (budget == 0)
+				return;
+			if (!send(entry.colors, entry.pendingColors.data(), colorBytes, entry.uploadedColorBytes))
+				return;
+			entry.pendingColors = std::vector<unsigned char>();
+		}
+		entry.pendingUpload = false;
+	}
+
+	void PointcloudPreviewWidget::DestroyEntry(CloudEntry& entry)
+	{
+		if (entry.previous)
+		{
+			DestroyEntry(*entry.previous);
+			entry.previous.reset();
+		}
+		if (entry.vao.isCreated())
+		{
+			entry.vao.destroy();
+		}
+		if (entry.colors.isCreated())
+		{
+			entry.colors.destroy();
+		}
+		// The position buffer may still be drawn by the entry that replaces this one.
+		if (entry.positions && entry.positions.use_count() == 1 && entry.positions->isCreated())
+		{
+			entry.positions->destroy();
+		}
+		entry.positions.reset();
+	}
 } // namespace smcp

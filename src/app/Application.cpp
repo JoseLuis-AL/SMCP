@@ -27,38 +27,54 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "app/Application.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
-#include <QFont>
-#include <QProgressDialog>
-#include <QMessageBox>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QFont>
+#include <QIcon>
+#include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
+#include <QProgressDialog>
 #include <QStyleFactory>
 
-#include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <iostream>
-#include <ctime>
-#include <cstdlib>
 
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/calib3d/calib3d.hpp>
-
+#include "app/TaskRunner.h"
 #include "core/StructuredLight.h"
+#include "ui/widgets/ComboBoxPopupStyle.h"
 
 namespace smcp
 {
 
+namespace
+{
+	// User scope, native format (on Windows the registry: HKCU\Software\CENAM\SMCP).
+	// IniFormat is not the default: QSettings writes the INI through QSaveFile and its rename fails
+	// on profiles with an encrypted AppData (EFS), leaving the configuration unsaved.
+	// SMCP_SETTINGS_DIR selects an INI file under that directory instead, so tests and side-by-side
+	// copies of the program do not share (or overwrite) the user's settings.
+	QSettings::Format SettingsFormat()
+	{
+		const QString directory = QString::fromLocal8Bit(qgetenv("SMCP_SETTINGS_DIR"));
+		if (directory.isEmpty())
+		{
+			return QSettings::NativeFormat;
+		}
+		QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory);
+		return QSettings::IniFormat;
+	}
+}
+
 Application::Application(int& argc, char** argv) :
 	QApplication(argc, argv),
-	// User scope, native format (on Windows the registry: HKCU\Software\CENAM\SMCP).
-	// IniFormat is not used: QSettings writes the INI through QSaveFile and its rename fails
-	// on profiles with an encrypted AppData (EFS), leaving the configuration unsaved.
-	config(QSettings::NativeFormat, QSettings::UserScope, Settings::App::Organization, Settings::App::App_Name, this),
+	config(SettingsFormat(), QSettings::UserScope, Settings::App::Organization, Settings::App::App_Name, this),
 	model(this),
 	calib(),
-	cornerCount(11, 7),
-	cornerSize(21.f, 21.f),
 	cornersWorld(),
 	cornersCamera(),
 	cornersProjector(),
@@ -103,13 +119,15 @@ void Application::deinit(void)
 
 void Application::Clear(void)
 {
-	//calib.Clear();
 	cornersWorld.clear();
 	cornersCamera.clear();
 	cornersProjector.clear();
 	patternList.clear();
 	minMaxList.clear();
 	projectorViewList.clear();
+	_decodeKeys.clear();
+	_cornersSearched.clear();
+	_usedInCalibration.clear();
 	pointcloud.Clear();
 }
 
@@ -118,8 +136,13 @@ void Application::Clear(void)
 // styleSheet or font properties.
 void Application::ApplyTheme(void)
 {
+	// Default icon of every window; the Point Cloud Editor sets its own.
+	setWindowIcon(QIcon(":/app-icon.png"));
+	new ComboBoxPopupStyle(this);
 	setStyle(QStyleFactory::create("Fusion"));
-	setFont(QFont("Segoe UI", 9));
+	QFont font("Segoe UI");
+	font.setPointSizeF(9);
+	setFont(font);
 
 	QFile qss(":/theme/smcp.qss");
 	if (qss.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -134,55 +157,34 @@ void Application::ApplyTheme(void)
 
 void Application::LoadConfig(void)
 {
+	// Writes the default of every processing parameter that has never been stored.
+	const auto ensure = [this](const char* key, const QVariant& value)
+	{
+		if (!config.value(key).isValid())
+		{
+			config.setValue(key, value);
+		}
+	};
+
 	//decode
-	if (!config.value(Settings::Decode::Threshold).isValid())
-	{
-		config.setValue(Settings::Decode::Threshold, Settings::Decode::Threshold_Default_Value);
-	}
-	if (!config.value(Settings::Decode::B).isValid())
-	{
-		config.setValue(Settings::Decode::B, Settings::Decode::B_Default_Value);
-	}
-	if (!config.value(Settings::Decode::M).isValid())
-	{
-		config.setValue(Settings::Decode::M, Settings::Decode::M_Default_Value);
-	}
+	ensure(Settings::Decode::Threshold, Settings::Decode::Threshold_Default_Value);
+	ensure(Settings::Decode::B, Settings::Decode::B_Default_Value);
+	ensure(Settings::Decode::M, Settings::Decode::M_Default_Value);
 
 	//checkerboard size
-	if (!config.value(Settings::Chessboard::Columns).isValid())
-	{
-		config.setValue(Settings::Chessboard::Columns, Settings::Chessboard::Columns_Default_Value);
-	}
-	if (!config.value(Settings::Chessboard::Rows).isValid())
-	{
-		config.setValue(Settings::Chessboard::Rows, Settings::Chessboard::Rows_Default_Value);
-	}
-	if (!config.value(Settings::Chessboard::Width).isValid())
-	{
-		config.setValue(Settings::Chessboard::Width, Settings::Chessboard::Width_Default_Value);
-	}
-	if (!config.value(Settings::Chessboard::Height).isValid())
-	{
-		config.setValue(Settings::Chessboard::Height, Settings::Chessboard::Height_Default_Value);
-	}
+	ensure(Settings::Chessboard::Columns, Settings::Chessboard::Columns_Default_Value);
+	ensure(Settings::Chessboard::Rows, Settings::Chessboard::Rows_Default_Value);
+	ensure(Settings::Chessboard::Width, Settings::Chessboard::Width_Default_Value);
+	ensure(Settings::Chessboard::Height, Settings::Chessboard::Height_Default_Value);
 
 	//reconstruction
-	if (!config.value(Settings::Reconstruction::Max_Dist).isValid())
-	{
-		config.setValue(Settings::Reconstruction::Max_Dist, Settings::Reconstruction::Max_Dist_Default_Value);
-	}
-	if (!config.value(Settings::Reconstruction::Save_Normals).isValid())
-	{
-		config.setValue(Settings::Reconstruction::Save_Normals, Settings::Reconstruction::Save_Normals_Default_Value);
-	}
-	if (!config.value(Settings::Reconstruction::Save_Colors).isValid())
-	{
-		config.setValue(Settings::Reconstruction::Save_Colors, Settings::Reconstruction::Save_Colors_Default_Value);
-	}
-	if (!config.value(Settings::Reconstruction::Save_Binary).isValid())
-	{
-		config.setValue(Settings::Reconstruction::Save_Binary, Settings::Reconstruction::Save_Binary_Default_Value);
-	}
+	ensure(Settings::Reconstruction::Max_Dist, Settings::Reconstruction::Max_Dist_Default_Value);
+	ensure(Settings::Reconstruction::Save_Normals, Settings::Reconstruction::Save_Normals_Default_Value);
+	ensure(Settings::Reconstruction::Save_Colors, Settings::Reconstruction::Save_Colors_Default_Value);
+	ensure(Settings::Reconstruction::Subpixel, Settings::Reconstruction::Subpixel_Default_Value);
+	ensure(Settings::Calibration::Joint_Refinement, Settings::Calibration::Joint_Refinement_Default_Value);
+	ensure(Settings::Calibration::Subpixel_Corners, Settings::Calibration::Subpixel_Corners_Default_Value);
+	ensure(Settings::Reconstruction::Plane_Triangulation, Settings::Reconstruction::Plane_Triangulation_Default_Value);
 }
 
 void Application::SetRootDir(const QString& dirname)
@@ -227,28 +229,20 @@ void Application::SetRootDir(const QString& dirname)
 
 		//read projector info
 		int projectorWidth = 1024, projectorHeight = 768; //defaults compatible with old software
-		QString projectorFilename = dirname + "/" + item + "/projector_info.txt";
-		FILE* fp = fopen(qPrintable(projectorFilename), "r");
-		if (fp)
+		QFile projectorFile(dirname + "/" + item + "/projector_info.txt");
+		if (projectorFile.open(QIODevice::ReadOnly | QIODevice::Text))
 		{   //projector info file exists
-			int width, height;
-			if (fscanf(fp, "%u %u", &width, &height) == 2 && width > 0 && height)
+			int width = 0, height = 0;
+			if (sscanf(projectorFile.readAll().constData(), "%d %d", &width, &height) == 2 && width > 0 && height > 0)
 			{   //ok
 				projectorWidth = width;
 				projectorHeight = height;
-				std::cerr << "Projector info file loaded: " << projectorFilename.toStdString() << std::endl;
 			}
 			else
 			{
-				std::cerr << "Projector info file has invalid values" << std::endl;
+				std::cerr << "Projector info file has invalid values: " << item.toStdString() << std::endl;
 			}
-			fclose(fp);
 		}
-		else
-		{
-			std::cerr << "Projector info file failed to open: " << projectorFilename.toStdString() << std::endl;
-		}
-		std::cerr << "Projector info file: using width=" << projectorWidth << " height=" << projectorHeight << std::endl;
 		model.setData(parent, projectorWidth, ProjectorWidthRole);
 		model.setData(parent, projectorHeight, ProjectorHeightRole);
 
@@ -299,57 +293,18 @@ const cv::Mat Application::GetImage(unsigned level, unsigned n, Role role) const
 	{   //invalid args
 		return cv::Mat();
 	}
-
-	//try to load
-	if (model.rowCount() < static_cast<int>(level))
+	if (model.rowCount() <= static_cast<int>(level))
 	{   //out of bounds
 		return cv::Mat();
 	}
 	QModelIndex parent = model.index(level, 0);
-	if (model.rowCount(parent) < static_cast<int>(n))
+	if (model.rowCount(parent) <= static_cast<int>(n))
 	{   //out of bounds
 		return cv::Mat();
 	}
 
-	QModelIndex index = model.index(n, 0, parent);
-	if (!index.isValid())
-	{   //invalid index
-		return cv::Mat();
-	}
-
-	QString filename = model.data(index, ImageFilenameRole).toString();
-	std::cout << "[" << (role == GrayImageRole ? "gray" : "color") << "] Filename: " << filename.toStdString() << std::endl;
-
-	//load image
-	cv::Mat rgbImage = cv::imread(filename.toStdString());
-	if (rgbImage.rows > 0 && rgbImage.cols > 0)
-	{
-		//color
-		if (role == ColorImageRole)
-		{
-			return rgbImage;
-		}
-
-		//gray scale
-		if (role == GrayImageRole)
-		{
-			cv::Mat grayImage;
-			cvtColor(rgbImage, grayImage, CV_BGR2GRAY);
-			return grayImage;
-		}
-	}
-
-	return cv::Mat();
-}
-
-int Application::GetCameraWidth(unsigned level) const
-{
-	return GetImage(level, 0, ColorImageRole).cols;
-}
-
-int Application::GetCameraHeight(unsigned level) const
-{
-	return GetImage(level, 0, ColorImageRole).rows;
+	const std::string filename = model.data(model.index(n, 0, parent), ImageFilenameRole).toString().toStdString();
+	return role == ColorImageRole ? StructuredLight::GetColorImage(filename) : StructuredLight::GetGrayImage(filename);
 }
 
 int Application::GetProjectorWidth(unsigned level) const
@@ -372,288 +327,397 @@ int Application::GetProjectorHeight(unsigned level) const
 	return 0;
 }
 
-bool Application::ExtractChessboardCorners(void)
+/* Pipeline inputs =========================================================================== */
+
+std::vector<Calibration::CaptureSet> Application::CaptureSets(void) const
 {
-	cornerCount = cv::Size(config.value(Settings::Chessboard::Columns).toUInt(), config.value(Settings::Chessboard::Rows).toUInt()); //interior number of corners
-	cornerSize = cv::Size2f(config.value(Settings::Chessboard::Width).toDouble(), config.value(Settings::Chessboard::Height).toDouble());
-
-	unsigned count = static_cast<unsigned>(model.rowCount());
-
-	ProcessingSetProgressTotal(count);
-	ProcessingSetProgressValue(0);
-	ProcessingSetCurrentMessage("Extracting corners...");
-
-	cornersWorld.clear();
-	cornersCamera.clear();
-	cornersWorld.resize(count);
-	cornersCamera.resize(count);
-
-	cv::Size imageSize(0, 0);
-	int imageScale = 1;
-
-	bool allFound = true;
-	for (unsigned i = 0; i < count; i++)
+	std::vector<Calibration::CaptureSet> sets(model.rowCount());
+	for (int i = 0; i < model.rowCount(); i++)
 	{
-		QModelIndex index = model.index(i, 0);
-		QString setName = model.data(index, Qt::DisplayRole).toString();
-		bool checked = (model.data(index, Qt::CheckStateRole).toInt() == Qt::Checked);
-		if (!checked)
-		{   //skip
-			ProcessingMessage(QString(" * %1: skip (not selected)").arg(setName));
-			ProcessingSetProgressValue(i + 1);
-			continue;
-		}
-		ProcessingSetCurrentMessage(QString("Extracting corners... %1").arg(setName));
-
-		cv::Mat grayImage = GetImage(i, 1, GrayImageRole);
-		if (grayImage.rows < 1)
+		const QModelIndex parent = model.index(i, 0);
+		Calibration::CaptureSet& set = sets[i];
+		set.name = model.data(parent, Qt::DisplayRole).toString().toStdString();
+		set.selected = (model.data(parent, Qt::CheckStateRole).toInt() == Qt::Checked);
+		const int images = model.rowCount(parent);
+		set.images.reserve(images);
+		for (int n = 0; n < images; n++)
 		{
-			ProcessingSetProgressValue(i + 1);
-			continue;
+			set.images.push_back(model.data(model.index(n, 0, parent), ImageFilenameRole).toString().toStdString());
 		}
+	}
+	return sets;
+}
 
-		if (imageSize.width == 0)
-		{   //init image size
-			imageSize = grayImage.size();
-			if (imageSize.width > 1024)
-			{
-				imageScale = cvRound(imageSize.width / 1024.0);
-			}
-		}
-		else if (imageSize != grayImage.size())
-		{   //error
-			std::cout << "ERROR: image of different size: set " << i << std::endl;
-			return false;
-		}
+Calibration::Params Application::PipelineParams(void) const
+{
+	Calibration::Params params;
+	params.chessboard.cornerCount = cv::Size(config.value(Settings::Chessboard::Columns).toUInt(), config.value(Settings::Chessboard::Rows).toUInt());
+	params.chessboard.squareSize = cv::Size2f(config.value(Settings::Chessboard::Width).toDouble(), config.value(Settings::Chessboard::Height).toDouble());
+	params.decode.b = config.value(Settings::Decode::B, Settings::Decode::B_Default_Value).toFloat();
+	params.decode.m = config.value(Settings::Decode::M, Settings::Decode::M_Default_Value).toUInt();
+	// The projector resolution of the first set applies to the whole workspace, as it always has.
+	params.projectorSize = cv::Size(GetProjectorWidth(), GetProjectorHeight());
+	params.homographyWindow = config.value(Settings::Calibration::H_Win, Settings::Calibration::H_Win_Default_Value).toUInt();
+	params.shadowThreshold = config.value(Settings::Calibration::Shadow_Threshold, Settings::Calibration::Shadow_Threshold_Default_Value).toUInt();
+	params.solve.jointRefinement = config.value(Settings::Calibration::Joint_Refinement, Settings::Calibration::Joint_Refinement_Default_Value).toBool();
+	params.subpixelCorners = config.value(Settings::Calibration::Subpixel_Corners, Settings::Calibration::Subpixel_Corners_Default_Value).toBool();
+	return params;
+}
 
-		cv::Mat smallImg;
+QByteArray Application::DecodeKey(const Calibration::CaptureSet& set, const Calibration::Params& params) const
+{
+	QByteArray key;
+	key.append(reinterpret_cast<const char*>(&params.decode.b), sizeof(params.decode.b));
+	key.append(QByteArray::number(params.decode.m)).append('|');
+	key.append(QByteArray::number(params.projectorSize.width)).append('x').append(QByteArray::number(params.projectorSize.height));
+	for (const std::string& image : set.images)
+	{
+		const QFileInfo info(QString::fromStdString(image));
+		key.append('|').append(image.c_str()).append('|').append(QByteArray::number(info.size()));
+		key.append('|').append(QByteArray::number(info.lastModified().toMSecsSinceEpoch()));
+	}
+	return key;
+}
 
-		if (imageScale > 1)
+std::vector<StructuredLight::DecodedSet> Application::ValidDecodes(const std::vector<Calibration::CaptureSet>& sets, const Calibration::Params& params) const
+{
+	std::vector<StructuredLight::DecodedSet> valid(sets.size());
+	for (std::size_t i = 0; i < sets.size(); i++)
+	{
+		if (sets[i].selected && i < patternList.size() && i < minMaxList.size() && i < _decodeKeys.size()
+			&& patternList[i].data && minMaxList[i].data && !_decodeKeys[i].isEmpty() && _decodeKeys[i] == DecodeKey(sets[i], params))
 		{
-			cv::resize(grayImage, smallImg, cv::Size(grayImage.cols / imageScale, grayImage.rows / imageScale));
+			valid[i].pattern = patternList[i];
+			valid[i].minMax = minMaxList[i];
 		}
-		else
-		{
-			grayImage.copyTo(smallImg);
-		}
+	}
+	return valid;
+}
 
-		if (ProcessingCanceled())
-		{
-			ProcessingSetCurrentMessage("Extract corners canceled");
-			ProcessingMessage("Extract corners canceled");
-			return false;
-		}
+void Application::ResizeResults(std::size_t count)
+{
+	patternList.resize(count);
+	minMaxList.resize(count);
+	_decodeKeys.resize(count);
+	if (projectorViewList.size() < count)
+	{
+		projectorViewList.resize(count);
+	}
+}
 
-		//this will be filled by the detected corners
-		std::vector<cv::Point2f>& camCorners = cornersCamera[i];
-		std::vector<cv::Point3f>& worldCorners = cornersWorld[i];
-		if (cv::findChessboardCorners(smallImg, cornerCount, camCorners,
-			cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_NORMALIZE_IMAGE /*+ cv::CALIB_CB_FILTER_QUADS*/))
-		{
-			ProcessingMessage(QString(" * %1: found %2 corners").arg(setName).arg(camCorners.size()));
-			std::cout << " - corners: " << camCorners.size() << std::endl;
+void Application::StoreDecode(std::size_t level, const StructuredLight::DecodedSet& decoded, const QByteArray& key)
+{
+	if (level >= patternList.size() || !decoded.pattern.data)
+	{
+		return;
+	}
+	if (patternList[level].data != decoded.pattern.data && level < projectorViewList.size())
+	{   //new data: the cached projector view no longer matches
+		projectorViewList[level] = cv::Mat();
+	}
+	patternList[level] = decoded.pattern;
+	minMaxList[level] = decoded.minMax;
+	_decodeKeys[level] = key;
+}
 
-			GetChessboardWorldCoords(worldCorners, cornerCount, cornerSize);
-		}
+/* Background execution ====================================================================== */
 
-		for (std::vector<cv::Point2f>::iterator iter = camCorners.begin(); iter != camCorners.end(); iter++)
+void Application::RunWithProcessingDialog(const std::function<void(ProgressSink&)>& work)
+{
+	QueuedProgress sink;
+	connect(&sink, &QueuedProgress::MessageReported, &processingDialog, [this](const QString& text) { processingDialog.Message(text); });
+	connect(&sink, &QueuedProgress::StatusReported, &processingDialog, [this](const QString& text) { processingDialog.SetCurrentMessage(text); });
+	connect(&sink, &QueuedProgress::StepReported, &processingDialog, [this](int done, int total)
 		{
-			*iter = imageScale * (*iter);
-		}
-		if (camCorners.size())
-		{
-			cv::cornerSubPix(grayImage, camCorners, cv::Size(11, 11), cv::Size(-1, -1),
-				cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
-		}
-
-		ProcessingSetProgressValue(i + 1);
+			processingDialog.SetProgressTotal(static_cast<unsigned>(std::max(0, total)));
+			processingDialog.SetProgressValue(static_cast<unsigned>(std::max(0, done)));
+		});
+	connect(&processingDialog, &ProcessingDialog::CancelRequested, &sink, &QueuedProgress::Cancel);
+	if (processingDialog.Canceled())
+	{
+		sink.Cancel();
 	}
 
-	ProcessingSetCurrentMessage("Extract corners finished");
-	ProcessingSetProgressValue(count);
+	const std::exception_ptr error = RunBlocking([&]() { work(sink); });
+	// Reports still queued when the worker finished.
+	sendPostedEvents(&processingDialog);
+	if (error)
+	{
+		const QString text = QString("ERROR: the operation failed (%1)").arg(DescribeError(error));
+		processingDialog.SetCurrentMessage(text);
+		processingDialog.Message(text);
+	}
+}
+
+bool Application::RunWithProgressDialog(QWidget* parentWidget, const QString& label, const std::function<void(ProgressSink&)>& work)
+{
+	QueuedProgress sink;
+	BusyProgressDialog progress(label, parentWidget ? parentWidget : &mainWin);
+	connect(&sink, &QueuedProgress::StatusReported, &progress, [&progress, &sink](const QString& text)
+		{
+			if (!sink.Canceled())
+			{
+				progress.setLabelText(text);
+			}
+		});
+	connect(&progress, &BusyProgressDialog::canceled, &sink, &QueuedProgress::Cancel);
+	progress.show();
+
+	const std::exception_ptr error = RunBlocking([&]() { work(sink); });
+	const bool canceled = sink.Canceled();
+	progress.Finish();
+	if (error)
+	{
+		QMessageBox::critical(parentWidget, "Error", QString("The operation failed: %1").arg(DescribeError(error)));
+		return false;
+	}
+	return !canceled;
+}
+
+/* Corners =================================================================================== */
+
+bool Application::ExtractChessboardCorners(void)
+{
+	const std::vector<Calibration::CaptureSet> sets = CaptureSets();
+	const Calibration::Params params = PipelineParams();
+
+	std::vector<Calibration::SetCorners> corners;
+	bool completed = false;
+	RunWithProcessingDialog([&](ProgressSink& progress)
+		{
+			cv::Size imageSize;
+			completed = Calibration::ExtractCorners(sets, params.chessboard, corners, imageSize, progress);
+		});
+
+	cornersWorld.assign(sets.size(), std::vector<cv::Point3f>());
+	cornersCamera.assign(sets.size(), std::vector<cv::Point2f>());
+	_cornersSearched.assign(sets.size(), 0);
+	bool allFound = completed;
+	for (std::size_t i = 0; i < sets.size() && i < corners.size(); i++)
+	{
+		cornersWorld[i] = corners[i].world;
+		cornersCamera[i] = corners[i].camera;
+		_cornersSearched[i] = completed && sets[i].selected;
+		allFound = allFound && (!sets[i].selected || !corners[i].camera.empty());
+	}
+	UpdateSetStatus();
 	return allFound;
 }
 
+/* Decoding ================================================================================== */
+
 void Application::DecodeAll(void)
 {
-	unsigned count = static_cast<unsigned>(model.rowCount());
-	cv::Size imageSize(0, 0);
+	const std::vector<Calibration::CaptureSet> sets = CaptureSets();
+	const Calibration::Params params = PipelineParams();
+	const std::vector<StructuredLight::DecodedSet> valid = ValidDecodes(sets, params);
+	const int count = static_cast<int>(sets.size());
 
-	ProcessingSetProgressTotal(count);
-	ProcessingSetProgressValue(0);
-	ProcessingSetCurrentMessage("Decoding...");
-
-	patternList.resize(count);
-	minMaxList.resize(count);
-
-	QString path = config.value(Settings::App::Root_Directory).toString();
-
-	//decode gray patterns
-	for (unsigned i = 0; i < count; i++)
+	std::vector<cv::Size> projectorSizes(sets.size());
+	for (int i = 0; i < count; i++)
 	{
-		QModelIndex index = model.index(i, 0);
-		QString setName = model.data(index, Qt::DisplayRole).toString();
-		bool checked = (model.data(index, Qt::CheckStateRole).toInt() == Qt::Checked);
-		if (!checked)
-		{   //skip
-			ProcessingMessage(QString(" * %1: skipped [not selected]").arg(setName));
-			ProcessingSetProgressValue(i + 1);
-			continue;
-		}
-
-		ProcessingSetCurrentMessage(QString("Decoding... %1").arg(setName));
-
-		cv::Mat& patternImage = patternList[i];
-		cv::Mat& minMaxImage = minMaxList[i];
-		if (!DecodeGraySet(i, patternImage, minMaxImage))
-		{   //error
-			std::cout << "ERROR: Decode image set " << i << " failed. " << std::endl;
-			return;
-		}
-
-		if (ProcessingCanceled())
-		{
-			ProcessingSetCurrentMessage("Decode canceled");
-			ProcessingMessage("Decode canceled");
-			return;
-		}
-
-		if (imageSize.width == 0)
-		{
-			imageSize = patternImage.size();
-		}
-		else if (imageSize != patternImage.size())
-		{
-			ProcessingMessage(QString("ERROR: pattern image of different size: set %1").arg(setName));
-			std::cout << "ERROR: pattern image of different size: set " << i << std::endl;
-			return;
-		}
-		else if (GetProjectorWidth(0) != GetProjectorWidth(i) || GetProjectorHeight(0) != GetProjectorHeight(i))
-		{
-			QString warningMessage = QString("WARNING: projector resolution does not match: set %1 [expected %2x%3, got %4x%5]").arg(setName)
-				.arg(GetProjectorWidth(0)).arg(GetProjectorHeight(0)).arg(GetProjectorWidth(i)).arg(GetProjectorHeight(i));
-			ProcessingMessage(warningMessage);
-			std::cout << warningMessage.toStdString() << std::endl;
-		}
-
-		//save pattern image as PGM for debugging
-		//QString filename = path + "/" + setName;
-		//IoUtil::WritePgm(patternImage, qPrintable(filename));
-
-		ProcessingMessage(QString(" * %1: decoded").arg(setName));
-		ProcessingSetProgressValue(i + 1);
+		projectorSizes[i] = cv::Size(GetProjectorWidth(i), GetProjectorHeight(i));
 	}
 
-	ProcessingSetCurrentMessage("Decode finished");
-	ProcessingSetProgressValue(count);
+	std::vector<StructuredLight::DecodedSet> decoded(sets.size());
+	RunWithProcessingDialog([&](ProgressSink& progress)
+		{
+			cv::Size imageSize(0, 0);
+			progress.Step(0, count);
+			progress.Status("Decoding...");
+
+			for (int i = 0; i < count; i++)
+			{
+				const std::string& name = sets[i].name;
+				if (!sets[i].selected)
+				{   //skip
+					progress.Message(" * " + name + ": skipped [not selected]");
+					progress.Step(i + 1, count);
+					continue;
+				}
+				if (progress.Canceled())
+				{
+					progress.Status("Decode canceled");
+					progress.Message("Decode canceled");
+					return;
+				}
+
+				progress.Status("Decoding... " + name);
+				const bool reused = valid[i].pattern.data != NULL;
+				if (reused)
+				{
+					decoded[i] = valid[i];
+				}
+				else
+				{
+					std::string error;
+					if (!StructuredLight::DecodeGraySet(sets[i].images, params.projectorSize, params.decode, decoded[i], error, &progress))
+					{
+						progress.Message(error);
+						progress.Status(progress.Canceled() ? "Decode canceled" : "ERROR: decode of set " + name + " failed");
+						return;
+					}
+				}
+
+				const cv::Size size = decoded[i].pattern.size();
+				if (imageSize.width == 0)
+				{
+					imageSize = size;
+				}
+				else if (imageSize != size)
+				{
+					decoded[i] = StructuredLight::DecodedSet();
+					progress.Message("ERROR: pattern image of different size: set " + name);
+					progress.Status("ERROR: pattern image of different size: set " + name);
+					return;
+				}
+				else if (projectorSizes[0] != projectorSizes[i])
+				{
+					progress.Message("WARNING: projector resolution does not match: set " + name + " [expected "
+						+ std::to_string(projectorSizes[0].width) + "x" + std::to_string(projectorSizes[0].height) + ", got "
+						+ std::to_string(projectorSizes[i].width) + "x" + std::to_string(projectorSizes[i].height) + "]");
+				}
+
+				progress.Message(" * " + name + (reused ? ": decoded (reused)" : ": decoded"));
+				progress.Step(i + 1, count);
+			}
+
+			progress.Status("Decode finished");
+			progress.Step(count, count);
+		});
+
+	ResizeResults(sets.size());
+	for (std::size_t i = 0; i < sets.size(); i++)
+	{
+		StoreDecode(i, decoded[i], DecodeKey(sets[i], params));
+	}
+	UpdateSetStatus();
 }
 
-void Application::Decode(int level, QWidget* parentWidget)
+bool Application::Decode(int level, QWidget* parentWidget)
 {
 	if (level < 0 || level >= model.rowCount())
 	{   //invalid row
-		return;
-	}
-	if (patternList.size() < model.rowCount<size_t>())
-	{
-		patternList.resize(model.rowCount());
-	}
-	if (minMaxList.size() < model.rowCount<size_t>())
-	{
-		minMaxList.resize(model.rowCount());
+		return false;
 	}
 
-	cv::Mat& patternImage = patternList[level];
-	cv::Mat& minMaxImage = minMaxList[level];
+	const std::vector<Calibration::CaptureSet> sets = CaptureSets();
+	const Calibration::Params params = PipelineParams();
+	ResizeResults(sets.size());
 
-	if (!DecodeGraySet(level, patternImage, minMaxImage, parentWidget))
-	{   //error
-		std::cout << "ERROR: Decode image set " << level << " failed. " << std::endl;
+	const QByteArray key = DecodeKey(sets[level], params);
+	if (patternList[level].data && minMaxList[level].data && _decodeKeys[level] == key)
+	{   //already decoded from the same images with the same parameters
+		return true;
 	}
+
+	StructuredLight::DecodedSet decoded;
+	std::string error;
+	bool ok = false;
+	const bool finished = RunWithProgressDialog(parentWidget, "Decoding...", [&](ProgressSink& progress)
+		{
+			ok = StructuredLight::DecodeGraySet(sets[level].images, params.projectorSize, params.decode, decoded, error, &progress);
+		});
+	if (!finished)
+	{
+		return false;
+	}
+	if (!ok)
+	{
+		QMessageBox::critical(parentWidget, "Error", QString("Decode failed: %1").arg(QString::fromStdString(error)));
+		return false;
+	}
+
+	StoreDecode(level, decoded, key);
+	UpdateSetStatus();
+	return true;
 }
 
-bool Application::DumpDecoded(const char* filename, int type, cv::Mat2f const& patternImage, cv::Mat2b const& minMaxImage, cv::Mat3b const& colorImage) const
-{
-	if (!filename || !patternImage.data || !minMaxImage.data || !colorImage.data)
-	{
-		return false;
-	}
+/* Calibration =============================================================================== */
 
-	FILE* fp = fopen(filename, "wb");
-	if (!fp)
-	{
-		return false;
-	}
+void Application::Calibrate(void)
+{   //try to calibrate the camera, projector, and stereo system
+	const std::vector<Calibration::CaptureSet> sets = CaptureSets();
+	const Calibration::Params params = PipelineParams();
+	const std::vector<StructuredLight::DecodedSet> valid = ValidDecodes(sets, params);
+	const QString path = config.value(Settings::App::Root_Directory).toString();
 
-	fwrite(&type, sizeof(int), 1, fp);
-	fwrite(&patternImage.cols, sizeof(int), 1, fp);
-	fwrite(&patternImage.rows, sizeof(int), 1, fp);
+	calib.Clear();
 
-	//int index = type-1;
-
-	//dump cols
-	for (int h = 0; h < patternImage.rows; ++h)
-	{
-		cv::Vec2f const* row = patternImage.ptr<cv::Vec2f>(h);
-		for (int w = 0; w < patternImage.cols; ++w)
+	Calibration::Result result;
+	RunWithProcessingDialog([&](ProgressSink& progress)
 		{
-			float value = row[w][0];
-			fwrite(&value, sizeof(float), 1, fp);
+			result = Calibration::Run(sets, params, valid, progress);
+			if (!result.success)
+			{
+				return;
+			}
+
+			//save to file
+			QString filename = path + "/calibration.yml";
+			progress.Message(result.calibration.SaveCalibration(filename)
+				? QString("Calibration saved: %1").arg(filename).toStdString()
+				: QString("[ERROR] Saving %1 failed").arg(filename).toStdString());
+
+			//save to MATLAB format
+			filename = path + "/calibration.m";
+			progress.Message(result.calibration.SaveCalibration(filename)
+				? QString("Calibration saved [MATLAB]: %1").arg(filename).toStdString()
+				: QString("[ERROR] Saving %1 failed").arg(filename).toStdString());
+
+			//save corners
+			std::string error;
+			if (!Calibration::SaveCorners(path.toStdString(), result, error))
+			{
+				progress.Message(error);
+			}
+
+			progress.Status("Calibration finished");
+			progress.Message("Calibration finished");
+		});
+
+	//adopt whatever the pipeline produced, also when it stopped early
+	ResizeResults(sets.size());
+	cornersWorld.assign(sets.size(), std::vector<cv::Point3f>());
+	cornersCamera.assign(sets.size(), std::vector<cv::Point2f>());
+	cornersProjector.assign(sets.size(), std::vector<cv::Point2f>());
+	_cornersSearched.assign(sets.size(), 0);
+	_usedInCalibration.assign(sets.size(), 0);
+	for (std::size_t i = 0; i < sets.size(); i++)
+	{
+		if (i < result.corners.size())
+		{
+			cornersWorld[i] = result.corners[i].world;
+			cornersCamera[i] = result.corners[i].camera;
+			_cornersSearched[i] = sets[i].selected && result.cornersExtracted;
+		}
+		if (result.success && i < result.projectorCorners.size())
+		{
+			_usedInCalibration[i] = !cornersWorld[i].empty() && !cornersCamera[i].empty() && !result.projectorCorners[i].empty();
+		}
+		if (i < result.projectorCorners.size())
+		{
+			cornersProjector[i] = result.projectorCorners[i];
+		}
+		if (i < result.decoded.size())
+		{
+			StoreDecode(i, result.decoded[i], DecodeKey(sets[i], params));
 		}
 	}
-
-	//dump rows
-	for (int h = 0; h < patternImage.rows; ++h)
+	if (result.success)
 	{
-		cv::Vec2f const* row = patternImage.ptr<cv::Vec2f>(h);
-		for (int w = 0; w < patternImage.cols; ++w)
-		{
-			float value = row[w][1];
-			fwrite(&value, sizeof(float), 1, fp);
-		}
+		calib = result.calibration;
+		calib.filename = path + "/calibration.yml";
+		calib.Display();
 	}
-
-	//dump min
-	for (int h = 0; h < minMaxImage.rows; ++h)
-	{
-		cv::Vec2b const* row = minMaxImage.ptr<cv::Vec2b>(h);
-		for (int w = 0; w < minMaxImage.cols; ++w)
-		{
-			unsigned char value = row[w][0];
-			fwrite(&value, sizeof(unsigned char), 1, fp);
-		}
-	}
-
-	//dump max
-	for (int h = 0; h < minMaxImage.rows; ++h)
-	{
-		cv::Vec2b const* row = minMaxImage.ptr<cv::Vec2b>(h);
-		for (int w = 0; w < minMaxImage.cols; ++w)
-		{
-			unsigned char value = row[w][1];
-			fwrite(&value, sizeof(unsigned char), 1, fp);
-		}
-	}
-
-	//dump rgb
-	for (int h = 0; h < colorImage.rows; ++h)
-	{
-		cv::Vec3b const* row = colorImage.ptr<cv::Vec3b>(h);
-		for (int w = 0; w < colorImage.cols; ++w)
-		{
-			fwrite(&(row[w]), sizeof(unsigned char), 3, fp);
-		}
-	}
-
-	fclose(fp);
-
-	printf("saved file %s\n", filename);
-
-	return true;
+	UpdateSetStatus();
 }
 
 bool Application::LoadDump(const char* filename, int type, cv::Mat2f& patternImage, cv::Mat2b& minMaxImage, cv::Mat3b& colorImage) const
 {
+	patternImage = cv::Mat2f();
+	minMaxImage = cv::Mat2b();
+	colorImage = cv::Mat3b();
 	if (!filename)
 	{
 		return false;
@@ -665,578 +729,50 @@ bool Application::LoadDump(const char* filename, int type, cv::Mat2f& patternIma
 		return false;
 	}
 
-	int rows, cols;
-	fread(&type, sizeof(int), 1, fp);
-	fread(&cols, sizeof(int), 1, fp);
-	fread(&rows, sizeof(int), 1, fp);
-
-	patternImage.create(rows, cols);
-	minMaxImage.create(rows, cols);
-	colorImage.create(rows, cols);
-
-	//dump cols
-	for (int h = 0; h < patternImage.rows; ++h)
+	// Layout: type, cols, rows (int); pattern columns, pattern rows (float planes);
+	// minimum, maximum (byte planes); BGR image.
+	int rows = 0, cols = 0;
+	bool ok = fread(&type, sizeof(int), 1, fp) == 1 && fread(&cols, sizeof(int), 1, fp) == 1 && fread(&rows, sizeof(int), 1, fp) == 1
+		&& rows > 0 && cols > 0 && rows <= 65536 && cols <= 65536;
+	if (ok)
 	{
-		cv::Vec2f* row = patternImage.ptr<cv::Vec2f>(h);
-		for (int w = 0; w < patternImage.cols; ++w)
+		const std::size_t pixels = static_cast<std::size_t>(rows) * cols;
+		patternImage.create(rows, cols);
+		minMaxImage.create(rows, cols);
+		colorImage.create(rows, cols);
+
+		std::vector<float> floats(pixels);
+		std::vector<unsigned char> bytes(pixels);
+		for (int channel = 0; ok && channel < 2; channel++)
 		{
-			float value;
-			fread(&value, sizeof(float), 1, fp);
-			row[w][0] = value;
+			ok = fread(floats.data(), sizeof(float), pixels, fp) == pixels;
+			for (std::size_t i = 0; ok && i < pixels; i++)
+			{
+				patternImage(static_cast<int>(i / cols), static_cast<int>(i % cols))[channel] = floats[i];
+			}
+		}
+		for (int channel = 0; ok && channel < 2; channel++)
+		{
+			ok = fread(bytes.data(), 1, pixels, fp) == pixels;
+			for (std::size_t i = 0; ok && i < pixels; i++)
+			{
+				minMaxImage(static_cast<int>(i / cols), static_cast<int>(i % cols))[channel] = bytes[i];
+			}
+		}
+		for (int h = 0; ok && h < rows; ++h)
+		{
+			ok = fread(colorImage.ptr<cv::Vec3b>(h), 3, cols, fp) == static_cast<std::size_t>(cols);
 		}
 	}
-
-	//dump rows
-	for (int h = 0; h < patternImage.rows; ++h)
-	{
-		cv::Vec2f* row = patternImage.ptr<cv::Vec2f>(h);
-		for (int w = 0; w < patternImage.cols; ++w)
-		{
-			float value;
-			fread(&value, sizeof(float), 1, fp);
-			row[w][1] = value;
-		}
-	}
-
-	//dump min
-	for (int h = 0; h < minMaxImage.rows; ++h)
-	{
-		cv::Vec2b* row = minMaxImage.ptr<cv::Vec2b>(h);
-		for (int w = 0; w < minMaxImage.cols; ++w)
-		{
-			unsigned char value;
-			fread(&value, sizeof(unsigned char), 1, fp);
-			row[w][0] = value;
-		}
-	}
-
-	//dump max
-	for (int h = 0; h < minMaxImage.rows; ++h)
-	{
-		cv::Vec2b* row = minMaxImage.ptr<cv::Vec2b>(h);
-		for (int w = 0; w < minMaxImage.cols; ++w)
-		{
-			unsigned char value;
-			fread(&value, sizeof(unsigned char), 1, fp);
-			row[w][1] = value;
-		}
-	}
-
-	//dump rgb
-	for (int h = 0; h < colorImage.rows; ++h)
-	{
-		cv::Vec3b* row = colorImage.ptr<cv::Vec3b>(h);
-		fread(row, sizeof(unsigned char), 3 * cols, fp);
-	}
-
 	fclose(fp);
 
-	printf("loaded file %s\n", filename);
-
-	return true;
-}
-
-void Application::Calibrate(void)
-{   //try to calibrate the camera, projector, and stereo system
-	unsigned count = static_cast<unsigned>(model.rowCount());
-	const unsigned threshold = config.value(Settings::Calibration::Shadow_Threshold, Settings::Calibration::Shadow_Threshold_Default_Value).toUInt();
-
-	calib.Clear();
-
-	std::cout << " shadow_threshold = " << threshold << std::endl;
-
-	cv::Size imageSize(0, 0);
-
-	//detect corners ////////////////////////////////////
-	ProcessingMessage("Extracting corners:");
-	if (!ExtractChessboardCorners())
-	{
-		return;
+	if (!ok)
+	{   //truncated or foreign file
+		patternImage = cv::Mat2f();
+		minMaxImage = cv::Mat2b();
+		colorImage = cv::Mat3b();
 	}
-	ProcessingMessage("");
-
-	//collect projector correspondences
-	cornersProjector.resize(count);
-	patternList.resize(count);
-	minMaxList.resize(count);
-
-	ProcessingSetProgressTotal(count);
-	ProcessingSetProgressValue(0);
-	ProcessingSetCurrentMessage("Decoding and computing homographies...");
-
-	for (unsigned i = 0; i < count; i++)
-	{
-		std::vector<cv::Point2f> const& camCorners = cornersCamera[i];
-		std::vector<cv::Point2f>& projCorners = cornersProjector[i];
-
-		QModelIndex index = model.index(i, 0);
-		QString setName = model.data(index, Qt::DisplayRole).toString();
-		bool checked = (model.data(index, Qt::CheckStateRole).toInt() == Qt::Checked);
-		if (!checked)
-		{   //skip
-			ProcessingMessage(QString(" * %1: skip (not selected)").arg(setName));
-			ProcessingSetProgressValue(i + 1);
-			continue;
-		}
-
-		//checked: use this set
-		projCorners.clear(); //erase previous points
-
-		ProcessingSetCurrentMessage(QString("Decoding... %1").arg(setName));
-
-		cv::Mat& patternImage = patternList[i];
-		cv::Mat& minMaxImage = minMaxList[i];
-		if (!DecodeGraySet(i, patternImage, minMaxImage))
-		{   //error
-			std::cout << "ERROR: Decode image set " << i << " failed. " << std::endl;
-			return;
-		}
-
-		if (imageSize.width == 0)
-		{
-			imageSize = patternImage.size();
-		}
-		else if (imageSize != patternImage.size())
-		{
-			std::cout << "ERROR: pattern image of different size: set " << i << std::endl;
-			return;
-		}
-
-		//cv::Mat outPatternImage = StructuredLight::Pixel_Uncertain*cv::Mat::ones(patternImage.size(), patternImage.type());
-
-		ProcessingSetCurrentMessage(QString("Computing homographies... %1").arg(setName));
-
-		for (std::vector<cv::Point2f>::const_iterator iter = camCorners.cbegin(); iter != camCorners.cend(); iter++)
-		{
-			const cv::Point2f& p = *iter;
-			cv::Point2f q;
-
-			if (ProcessingCanceled())
-			{
-				ProcessingSetCurrentMessage("Calibration canceled");
-				ProcessingMessage("Calibration canceled");
-				return;
-			}
-			processEvents();
-
-			//find an homography around p
-			unsigned WINDOW_SIZE = config.value(Settings::Calibration::H_Win, Settings::Calibration::H_Win_Default_Value).toUInt() / 2;
-			std::vector<cv::Point2f> imgPoints, projPoints;
-			if (p.x > WINDOW_SIZE && p.y > WINDOW_SIZE && p.x + WINDOW_SIZE < patternImage.cols && p.y + WINDOW_SIZE < patternImage.rows)
-			{
-				for (unsigned h = p.y - WINDOW_SIZE; h < p.y + WINDOW_SIZE; h++)
-				{
-					const cv::Vec2f* row = patternImage.ptr<cv::Vec2f>(h);
-					const cv::Vec2b* minMaxRow = minMaxImage.ptr<cv::Vec2b>(h);
-					//cv::Vec2f * outRow = outPatternImage.ptr<cv::Vec2f>(h);
-					for (unsigned w = p.x - WINDOW_SIZE; w < p.x + WINDOW_SIZE; w++)
-					{
-						const cv::Vec2f& pattern = row[w];
-						const cv::Vec2b& minMax = minMaxRow[w];
-						//cv::Vec2f & outPattern = outRow[w];
-						if (StructuredLight::Invalid(pattern))
-						{
-							continue;
-						}
-						if ((minMax[1] - minMax[0]) < static_cast<int>(threshold))
-						{   //apply threshold and skip
-							continue;
-						}
-
-						imgPoints.push_back(cv::Point2f(w, h));
-						projPoints.push_back(cv::Point2f(pattern));
-
-						//outPattern = pattern;
-					}
-				}
-				cv::Mat H = cv::findHomography(imgPoints, projPoints, CV_RANSAC);
-				//std::cout << " H:\n" << H << std::endl;
-				cv::Point3d Q = cv::Point3d(cv::Mat(H * cv::Mat(cv::Point3d(p.x, p.y, 1.0))));
-				q = cv::Point2f(Q.x / Q.z, Q.y / Q.z);
-			}
-			else
-			{
-				return;
-			}
-
-			//save
-			projCorners.push_back(q);
-		}
-
-		ProcessingMessage(QString(" * %1: finished").arg(setName));
-		ProcessingSetProgressValue(i + 1);
-	}
-	ProcessingMessage("");
-
-	std::vector<std::vector<cv::Point3f> > worldCornersActive;
-	std::vector<std::vector<cv::Point2f> > cameraCornersActive;
-	std::vector<std::vector<cv::Point2f> > projectorCornersActive;
-	worldCornersActive.reserve(count);
-	cameraCornersActive.reserve(count);
-	projectorCornersActive.reserve(count);
-	for (unsigned i = 0; i < count; i++)
-	{
-		std::vector<cv::Point3f> const& worldCorners = cornersWorld.at(i);
-		std::vector<cv::Point2f> const& camCorners = cornersCamera.at(i);
-		std::vector<cv::Point2f> const& projCorners = cornersProjector.at(i);
-		if (worldCorners.size() && camCorners.size() && projCorners.size())
-		{   //active set
-			worldCornersActive.push_back(worldCorners);
-			cameraCornersActive.push_back(camCorners);
-			projectorCornersActive.push_back(projCorners);
-		}
-	}
-
-	if (worldCornersActive.size() < 3)
-	{
-		ProcessingSetCurrentMessage("ERROR: use at least 3 sets");
-		ProcessingMessage("ERROR: use at least 3 sets");
-		return;
-	}
-
-	int calFlags = 0
-				  //+ cv::CALIB_FIX_K1
-				  //+ cv::CALIB_FIX_K2
-				  //+ cv::CALIB_ZERO_TANGENT_DIST
-		+cv::CALIB_FIX_K3
-		;
-
-//calibrate the camera ////////////////////////////////////
-	ProcessingMessage(QString(" * Calibrate camera [%1x%2]").arg(imageSize.width).arg(imageSize.height));
-	std::vector<cv::Mat> camRvecs, camTvecs;
-	int camFlags = calFlags;
-	calib.camError = cv::calibrateCamera(worldCornersActive, cameraCornersActive, imageSize, calib.camK, calib.camKc, camRvecs, camTvecs, camFlags,
-		cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 50, DBL_EPSILON));
-
-//calibrate the projector ////////////////////////////////////
-	cv::Size projectorSize(GetProjectorWidth(), GetProjectorHeight());
-	ProcessingMessage(QString(" * Calibrate projector [%1x%2]").arg(projectorSize.width).arg(projectorSize.height));
-	std::vector<cv::Mat> projRvecs, projTvecs;
-	int projFlags = calFlags;
-	calib.projError = cv::calibrateCamera(worldCornersActive, projectorCornersActive, projectorSize, calib.projK, calib.projKc, projRvecs, projTvecs, projFlags,
-		cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 50, DBL_EPSILON));
-/*
-	//TMP: estimate an initial stereo R and T
-	double errStereo = 0.0;
-	std::vector<cv::Point3f> wpts;
-	std::vector<cv::Point2f> cipts, pipts;
-	for (size_t i=0; i<worldCornersActive.size(); ++i)
-	{
-	  auto const& worldCurr = worldCornersActive.at(i);
-	  auto const& camCurr = cameraCornersActive.at(i);
-	  auto const& projCurr = projectorCornersActive.at(i);
-	  cv::Matx33d Rc; cv::Rodrigues(camRvecs.at(i), Rc); cv::Point3d Tc = camTvecs.at(i);
-	  cv::Matx33d Rp; cv::Rodrigues(projRvecs.at(i), Rp); cv::Point3d Tp = projTvecs.at(i);
-	  for (size_t j=0; j<worldCurr.size(); ++j)
-	  {
-		auto const& wpt = worldCurr.at(j);
-
-		cv::Matx31d wptc = Rc*cv::Point3d(wpt) + Tc;
-		wpts.push_back( cv::Point3f(wptc(0,0),wptc(1,0),wptc(2,0)) );
-
-		cipts.push_back(camCurr.at(j));
-		pipts.push_back(projCurr.at(j));
-	  }
-	}
-
-	//cam Ransac
-	cv::Vec3d camRvec, camTvec;
-	cv::solvePnPRansac(wpts, cipts, calib.camK, calib.camKc, camRvec, camTvec);
-	std::cerr << "Cam (Ransac) R,T: R " << camRvec << " T " << camTvec << std::endl;
-
-	{ //reproj error
-	  double errCam = 0.0;
-	  std::vector<cv::Point2f> imgPts;
-	  cv::projectPoints(wpts, camRvec, camTvec, calib.camK, calib.camKc, imgPts);
-	  for (size_t i=0; i<imgPts.size(); ++i)
-	  {
-		auto const& p1 = imgPts.at(i);
-		auto const& p2 = cipts.at(i);
-		double err = cv::norm(p1-p2);
-		errCam += err;
-	  }
-	  errCam /= imgPts.size();
-	  std::cerr << " errCam (Ransac):  " << errCam << std::endl;
-	}
-
-	//cam LM
-	bool rv1 = cv::solvePnP(wpts, cipts, calib.camK, calib.camKc, camRvec, camTvec, true);
-	std::cerr << "Cam (LM) R,T: R " << camRvec << " T " << camTvec << std::endl;
-
-	{ //reproj error
-	  double errCam = 0.0;
-	  std::vector<cv::Point2f> imgPts;
-	  cv::projectPoints(wpts, camRvec, camTvec, calib.camK, calib.camKc, imgPts);
-	  for (size_t i=0; i<imgPts.size(); ++i)
-	  {
-		auto const& p1 = imgPts.at(i);
-		auto const& p2 = cipts.at(i);
-		double err = cv::norm(p1-p2);
-		errCam += err;
-		errStereo += err;
-	  }
-	  errCam /= imgPts.size();
-	  std::cerr << " errCam (LM):  " << errCam << std::endl;
-	}
-
-	//proj Ransac
-	cv::Vec3d projRvec, projTvec;
-	cv::solvePnPRansac(wpts, pipts, calib.projK, calib.projKc, projRvec, projTvec);
-	std::cerr << "Proj (Ransac) R,T: R " << projRvec << " T " << projTvec << std::endl;
-
-	{ //reproj error
-	  double errPrj = 0.0;
-	  std::vector<cv::Point2f> projPts;
-	  cv::projectPoints(wpts, projRvec, projTvec, calib.projK, calib.projKc, projPts);
-	  for (size_t i=0; i<projPts.size(); ++i)
-	  {
-		auto const& p1 = projPts.at(i);
-		auto const& p2 = pipts.at(i);
-		double err = cv::norm(p1-p2);
-		errPrj += err;
-	  }
-	  errPrj /= projPts.size();
-	  std::cerr << " errPrj (Ransac):  " << errPrj << std::endl;
-	}
-
-	//proj LM
-	bool rv2 = cv::solvePnP(wpts, pipts, calib.projK, calib.projKc, projRvec, projTvec, true);
-	std::cerr << "Proj (LM) R,T: R " << projRvec << " T " << projTvec << std::endl;
-
-	{ //reproj error
-	  double errPrj = 0.0;
-	  std::vector<cv::Point2f> projPts;
-	  cv::projectPoints(wpts, projRvec, projTvec, calib.projK, calib.projKc, projPts);
-	  for (size_t i=0; i<projPts.size(); ++i)
-	  {
-		auto const& p1 = projPts.at(i);
-		auto const& p2 = pipts.at(i);
-		double err = cv::norm(p1-p2);
-		errPrj += err;
-		errStereo += err;
-	  }
-	  errPrj /= projPts.size();
-	  std::cerr << " errPrj (LM):  " << errPrj << std::endl;
-	}
-
-	errStereo /= 2*wpts.size();;
-	std::cerr << " errStereo:  " << errStereo << std::endl;
-*/
-
-	//stereo calibration
-	ProcessingMessage(" * Calibrate stereo");
-	cv::Mat E, F;
-	calib.stereoError = cv::stereoCalibrate(worldCornersActive, cameraCornersActive, projectorCornersActive, calib.camK, calib.camKc, calib.projK, calib.projKc,
-		imageSize /*ignored*/, calib.R, calib.T, E, F,
-		cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 150, DBL_EPSILON),
-		cv::CALIB_FIX_INTRINSIC /*cv::CALIB_USE_INTRINSIC_GUESS*/ + calFlags);
-//print to console
-	calib.Display();
-
-	//print to GUI
-	std::stringstream stream;
-	calib.Display(stream);
-	ProcessingMessage("\n **** Calibration results ****\n");
-	ProcessingMessage(QString::fromStdString(stream.str()));
-
-	//save to file
-	QString path = config.value(Settings::App::Root_Directory).toString();
-	QString filename = path + "/calibration.yml";
-	if (calib.SaveCalibration(filename))
-	{
-		ProcessingMessage(QString("Calibration saved: %1").arg(filename));
-	}
-	else
-	{
-		ProcessingMessage(QString("[ERROR] Saving %1 failed").arg(filename));
-	}
-
-	//save to MATLAB format
-	filename = path + "/calibration.m";
-	if (calib.SaveCalibration(filename))
-	{
-		ProcessingMessage(QString("Calibration saved [MATLAB]: %1").arg(filename));
-	}
-	else
-	{
-		ProcessingMessage(QString("[ERROR] Saving %1 failed").arg(filename));
-	}
-
-	//save corners
-	for (unsigned i = 0; i < count; i++)
-	{
-		std::vector<cv::Point3f> const& worldCorners = cornersWorld.at(i);
-		std::vector<cv::Point2f> const& camCorners = cornersCamera.at(i);
-		std::vector<cv::Point2f> const& projCorners = cornersProjector.at(i);
-
-		QString filename0 = QString("%1/world_%2.txt").arg(path).arg(i, 2, 10, QLatin1Char('0'));
-		FILE* fp0 = fopen(qPrintable(filename0), "w");
-		if (!fp0)
-		{
-			std::cout << "ERROR: could no open " << filename0.toStdString() << std::endl;
-			return;
-		}
-		QString filename1 = QString("%1/cam_%2.txt").arg(path).arg(i, 2, 10, QLatin1Char('0'));
-		FILE* fp1 = fopen(qPrintable(filename1), "w");
-		if (!fp1)
-		{
-			std::cout << "ERROR: could no open " << filename1.toStdString() << std::endl;
-			return;
-		}
-		QString filename2 = QString("%1/proj_%2.txt").arg(path).arg(i, 2, 10, QLatin1Char('0'));
-		FILE* fp2 = fopen(qPrintable(filename2), "w");
-		if (!fp2)
-		{
-			fclose(fp1);
-			std::cout << "ERROR: could no open " << filename2.toStdString() << std::endl;
-			return;
-		}
-
-		std::cout << "Saved " << filename0.toStdString() << std::endl;
-		std::cout << "Saved " << filename1.toStdString() << std::endl;
-		std::cout << "Saved " << filename2.toStdString() << std::endl;
-
-		std::vector<cv::Point3f>::const_iterator iter0 = worldCorners.begin();
-		std::vector<cv::Point2f>::const_iterator iter1 = camCorners.begin();
-		std::vector<cv::Point2f>::const_iterator iter2 = projCorners.begin();
-		for (unsigned j = 0; j < worldCorners.size(); j++, ++iter0, ++iter1, ++iter2)
-		{
-			fprintf(fp0, "%lf %lf %lf\n", iter0->x, iter0->y, iter0->z);
-			fprintf(fp1, "%lf %lf\n", iter1->x, iter1->y);
-			fprintf(fp2, "%lf %lf\n", iter2->x, iter2->y);
-		}
-		fclose(fp0);
-		fclose(fp1);
-		fclose(fp2);
-	}
-
-	ProcessingMessage("Calibration finished");
-}
-
-bool Application::DecodeGraySet(unsigned level, cv::Mat& patternImage, cv::Mat& minMaxImage, QWidget* parentWidget) const
-{
-	if (model.rowCount() < static_cast<int>(level))
-	{   //out of bounds
-		return false;
-	}
-
-	patternImage = cv::Mat();
-	minMaxImage = cv::Mat();
-
-	//progress
-	QProgressDialog* progress = NULL;
-	if (parentWidget)
-	{
-		progress = new QProgressDialog("Decoding...", "Abort", 0, 100, parentWidget,
-			Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowCloseButtonHint);
-		progress->setWindowModality(Qt::WindowModal);
-		progress->setWindowTitle("Processing");
-		progress->setMinimumWidth(400);
-		progress->show();
-	}
-
-	if (ProcessingCanceled() || (progress && progress->wasCanceled()))
-	{   //abort
-		ProcessingSetCurrentMessage("Decode canceled");
-		ProcessingMessage("Decode canceled");
-		if (progress)
-		{
-			progress->close();
-			delete progress;
-			progress = NULL;
-		}
-		return false;
-	}
-	processEvents();
-
-	//parameters
-	const float b = config.value(Settings::Decode::B, Settings::Decode::B_Default_Value).toFloat();
-	const unsigned m = config.value(Settings::Decode::M, Settings::Decode::M_Default_Value).toUInt();
-
-	//estimate direct component
-	std::vector<cv::Mat> images;
-	int totalImages = model.rowCount(model.index(level, 0));
-	int totalPatterns = totalImages / 2 - 1;
-	const int directLightCount = 4;
-	const int directLightOffset = 4;
-	if (totalPatterns < directLightCount + directLightOffset)
-	{   //too few images
-		ProcessingSetCurrentMessage("ERROR: too few pattern images");
-		ProcessingMessage("ERROR: too few pattern images");
-		return false;
-	}
-	if (progress)
-	{
-		progress->setLabelText("Decoding: estimating direct and global light components...");
-		processEvents();
-	}
-
-	QList<unsigned> directComponentImages;
-	for (unsigned i = 0; i < directLightCount; i++)
-	{
-		int index = totalImages - totalPatterns - directLightCount - directLightOffset + i + 1;
-		directComponentImages.append(index);
-		directComponentImages.append(index + totalPatterns);
-	}
-	//QList<unsigned> directComponentImages(QList<unsigned>() << 15 << 16 << 17 << 18 << 35 << 36 << 37 << 38);
-	foreach(unsigned i, directComponentImages)
-	{
-		images.push_back(GetImage(level, i - 1));
-	}
-	cv::Mat directLight = StructuredLight::EstimateDirectLight(images, b);
-	ProcessingMessage("Estimate direct and global light components... done.");
-
-	if (progress)
-	{
-		progress->setValue(50);
-		progress->setLabelText("Decoding: projector column and row values...");
-		processEvents();
-	}
-
-	std::vector<std::string> imageNames;
-
-	QModelIndex parent = model.index(level, 0);
-	unsigned levelCount = static_cast<unsigned>(model.rowCount(parent));
-	for (unsigned i = 0; i < levelCount; i++)
-	{
-		QModelIndex index = model.index(i, 0, parent);
-		std::string filename = model.data(index, ImageFilenameRole).toString().toStdString();
-		std::cout << "[decode_set " << level << "] Filename: " << filename << std::endl;
-
-		imageNames.push_back(filename);
-	}
-
-	if (ProcessingCanceled() || (progress && progress->wasCanceled()))
-	{   //abort
-		ProcessingSetCurrentMessage("Decode canceled");
-		ProcessingMessage("Decode canceled");
-		if (progress)
-		{
-			progress->close();
-			delete progress;
-			progress = NULL;
-		}
-		return false;
-	}
-	processEvents();
-
-	ProcessingMessage("Decoding, please wait...");
-	cv::Size projectorSize(GetProjectorWidth(), GetProjectorHeight());
-	bool rv = StructuredLight::DecodePattern(imageNames, patternImage, minMaxImage, projectorSize, StructuredLight::RobustDecode | StructuredLight::GrayPatternDecode, directLight, m);
-
-	if (progress)
-	{
-		progress->setValue(100);
-		progress->setLabelText(QString("Decoding: %1").arg((rv ? "finished" : "failed")));
-		processEvents();
-
-		progress->close();
-		delete progress;
-		progress = NULL;
-		processEvents();
-	}
-
-	return rv;
+	return ok;
 }
 
 bool Application::LoadCalibration(QWidget* parentWidget)
@@ -1280,8 +816,11 @@ bool Application::SaveCalibration(QWidget* parentWidget)
 	return false;
 }
 
+/* Reconstruction ============================================================================ */
+
 void Application::ReconstructModel(int level, Scan3d::Pointcloud& pointcloud, QWidget* parentWidget)
 {
+	pointcloud.Clear();
 	if (level < 0 || level >= model.rowCount())
 	{   //invalid row
 		return;
@@ -1292,46 +831,29 @@ void Application::ReconstructModel(int level, Scan3d::Pointcloud& pointcloud, QW
 		return;
 	}
 
-	//decode first
-	Decode(level, parentWidget);
-	if (patternList.size() <= static_cast<size_t>(level) || minMaxList.size() <= static_cast<size_t>(level))
-	{   //error: decode failed
-		return;
-	}
-
-	cv::Mat patternImage = patternList.at(level);
-	cv::Mat minMaxImage = minMaxList.at(level);;
-	cv::Mat colorImage = GetImage(level, 0, ColorImageRole);
-
-	if (!patternImage.data || !minMaxImage.data)
-	{   //error: decode failed
-		return;
-	}
-
-	cv::Size projectorSize(GetProjectorWidth(), GetProjectorHeight());
-	int threshold = config.value(Settings::Decode::Threshold, Settings::Decode::Threshold_Default_Value).toInt();;
-	double maxDist = config.value(Settings::Reconstruction::Max_Dist, Settings::Reconstruction::Max_Dist_Default_Value).toDouble();;
-
-	Scan3d::ReconstructModel(pointcloud, calib, patternImage, minMaxImage, colorImage, projectorSize, threshold, maxDist, parentWidget);
-
-	//debug: dump code to file
-	/*
-	QString path = config.value(Settings::App::Root_Directory).toString();
-	QModelIndex index = model.index(level, 0);
-	QString setName = model.data(index, Qt::DisplayRole).toString();
-	DumpDecoded(qPrintable(QString("%1/%2/decode_dump.sl").arg(path).arg(setName)), 0, patternImage, minMaxImage, colorImage);
-	*/
-
-	//save the projector view
-	if (projectorViewList.size() < model.rowCount<size_t>())
+	//decode first (reused when the set is already decoded with the current parameters)
+	if (!Decode(level, parentWidget))
 	{
-		projectorViewList.resize(model.rowCount());
+		return;
 	}
-	pointcloud.colors.copyTo(projectorViewList[level]);
+
+	const cv::Mat patternImage = patternList.at(level);
+	const cv::Mat minMaxImage = minMaxList.at(level);
+	const cv::Mat colorImage = GetImage(level, 0, ColorImageRole);
+	ReconstructModelDump(patternImage, minMaxImage, colorImage, pointcloud, parentWidget, CaptureSets()[level].images);
+
+	//save the projector view: the classic cloud is organized like the projector image, so its colors
+	//are that view. A sub-pixel cloud is organized like the camera image; the view is then built on demand.
+	if (pointcloud.points.data && pointcloud.colors.size() == cv::Size(GetProjectorWidth(), GetProjectorHeight()))
+	{
+		pointcloud.colors.copyTo(projectorViewList[level]);
+	}
 }
 
-void Application::ReconstructModelDump(cv::Mat2f const& patternImage, cv::Mat2b const& minMaxImage, cv::Mat3b const& colorImage, Scan3d::Pointcloud& pointcloud, QWidget* parentWidget)
+void Application::ReconstructModelDump(cv::Mat2f const& patternImage, cv::Mat2b const& minMaxImage, cv::Mat3b const& colorImage, Scan3d::Pointcloud& pointcloud, QWidget* parentWidget,
+	const std::vector<std::string>& images)
 {
+	pointcloud.Clear();
 	if (!patternImage.data || !minMaxImage.data || !colorImage.data)
 	{   //invalid dump
 		return;
@@ -1342,11 +864,58 @@ void Application::ReconstructModelDump(cv::Mat2f const& patternImage, cv::Mat2b 
 		return;
 	}
 
-	cv::Size projectorSize(GetProjectorWidth(), GetProjectorHeight());
-	int threshold = config.value(Settings::Decode::Threshold, Settings::Decode::Threshold_Default_Value).toInt();;
-	double maxDist = config.value(Settings::Reconstruction::Max_Dist, Settings::Reconstruction::Max_Dist_Default_Value).toDouble();;
+	const cv::Size projectorSize(GetProjectorWidth(), GetProjectorHeight());
+	const int threshold = config.value(Settings::Decode::Threshold, Settings::Decode::Threshold_Default_Value).toInt();
+	const double maxDist = config.value(Settings::Reconstruction::Max_Dist, Settings::Reconstruction::Max_Dist_Default_Value).toDouble();
+	const CalibrationData calibration = calib;
 
-	Scan3d::ReconstructModel(pointcloud, calib, patternImage, minMaxImage, colorImage, projectorSize, threshold, maxDist, parentWidget);
+	// A decoded dump has no images, and sub-pixel without them is worse than the classic method.
+	const bool subpixel = !images.empty()
+		&& config.value(Settings::Reconstruction::Subpixel, Settings::Reconstruction::Subpixel_Default_Value).toBool();
+
+	const Scan3d::Triangulation triangulation =
+		config.value(Settings::Reconstruction::Plane_Triangulation, Settings::Reconstruction::Plane_Triangulation_Default_Value).toBool()
+			? Scan3d::Triangulation::ProjectorPlane
+			: Scan3d::Triangulation::RayMidpoint;
+
+	Scan3d::Pointcloud result;
+	std::string error;
+	const bool finished = RunWithProgressDialog(parentWidget, "Reconstruction in progress.", [&](ProgressSink& progress)
+		{
+			if (!subpixel)
+			{
+				Scan3d::ReconstructModel(result, calibration, patternImage, minMaxImage, colorImage, projectorSize, threshold, maxDist, &progress,
+					triangulation);
+				return;
+			}
+			std::vector<cv::Mat> gray;
+			progress.Status("Reconstruction in progress: loading images");
+			if (!StructuredLight::LoadGraySet(images, gray, error, &progress))
+			{
+				return;
+			}
+			const cv::Mat refined = StructuredLight::RefinePattern(gray, patternImage, minMaxImage, projectorSize, threshold, &progress);
+			if (!refined.data)
+			{
+				if (!progress.Canceled())
+				{
+					error = "the images of the set do not match its decoded pattern";
+				}
+				return;
+			}
+			gray.clear();  //the images are not needed to triangulate
+			Scan3d::ReconstructModelSubpixel(result, calibration, refined, minMaxImage, colorImage, projectorSize, threshold, maxDist, &progress,
+				triangulation);
+		});
+	if (finished && !error.empty())
+	{
+		QMessageBox::critical(parentWidget, "Error", QString("Sub-pixel reconstruction failed: %1").arg(QString::fromStdString(error)));
+		return;
+	}
+	if (finished)
+	{
+		pointcloud = result;
+	}
 }
 
 void Application::ComputeNormals(Scan3d::Pointcloud& pointcloud)
@@ -1354,185 +923,7 @@ void Application::ComputeNormals(Scan3d::Pointcloud& pointcloud)
 	Scan3d::ComputeNormals(pointcloud);
 }
 
-void Application::GetChessboardWorldCoords(std::vector<cv::Point3f>& worldCorners, cv::Size cornerCount, cv::Size cornerSize)
-{
-	//generate world object coordinates
-	for (int h = 0; h < cornerCount.height; h++)
-	{
-		for (int w = 0; w < cornerCount.width; w++)
-		{
-			worldCorners.push_back(cv::Point3f(cornerSize.width * w, cornerSize.height * h, 0.f));
-		}
-	}
-}
-
-/// <summary>
-/// Detects chessboard interior corners across all selected image sets and computes their corresponding world coordinates.
-/// </summary>
-/// <remarks>
-/// For each selected set, loads the grayscale image, optionally downscales it for faster detection, runs OpenCV's findChessboardCorners with
-/// FAST_CHECK for early rejection, scales the detected corners back to original resolution, and refines them with cornerSubPix. World coordinates are
-/// generated assuming a planar checkerboard at Z=0.
-/// Improvements over ExtractChessboardCorners: - Removed COGNEX dead code and cognexChessboard control variable. - Added CALIB_CB_FAST_CHECK flag
-/// for faster rejection of images without a chessboard. - Avoided unnecessary deep copy when imageScale == 1 (direct reference instead). - Used
-/// cv::INTER_AREA interpolation for higher-quality downscaling. - Reports a message when corners are not found in a set. - Properly marks allFound =
-/// false when detection fails. - Uses bitwise OR for flags and modern cv::TermCriteria constants. - Uses range-based for and const qualifiers
-/// following C++11 best practices.
-/// </remarks>
-bool Application::ExtractChessboardCornersV2(void)
-{
-	// Read checkerboard parameters from configuration.
-	cornerCount = cv::Size(
-		config.value(Settings::Chessboard::Columns).toUInt(),
-		config.value(Settings::Chessboard::Rows).toUInt()
-	);
-	cornerSize = cv::Size2f(
-		config.value(Settings::Chessboard::Width).toDouble(),
-		config.value(Settings::Chessboard::Height).toDouble()
-	);
-
-	const unsigned count = static_cast<unsigned>(model.rowCount());
-
-	// Initialize progress tracking.
-	ProcessingSetProgressTotal(count);
-	ProcessingSetProgressValue(0);
-	ProcessingSetCurrentMessage("Extracting corners...");
-
-	// Clear and allocate storage for results.
-	cornersWorld.clear();
-	cornersCamera.clear();
-	cornersWorld.resize(count);
-	cornersCamera.resize(count);
-
-	cv::Size imageSize(0, 0);
-	int imageScale = 1;
-	bool allFound = true;
-
-	// Detection flags for findChessboardCorners.
-	const int detectFlags = cv::CALIB_CB_ADAPTIVE_THRESH
-		| cv::CALIB_CB_NORMALIZE_IMAGE;
-
-	for (unsigned i = 0; i < count; i++)
-	{
-		const QModelIndex index = model.index(i, 0);
-		const QString setName = model.data(index, Qt::DisplayRole).toString();
-		const bool checked = (model.data(index, Qt::CheckStateRole).toInt() == Qt::Checked);
-
-		// Skip unselected sets.
-		if (!checked)
-		{
-			ProcessingMessage(QString(" * %1: skip (not selected)").arg(setName));
-			ProcessingSetProgressValue(i + 1);
-			continue;
-		}
-
-		ProcessingSetCurrentMessage(QString("Extracting corners... %1").arg(setName));
-
-		// Load the grayscale image for this set.
-		const cv::Mat grayImage = GetImage(i, 1, GrayImageRole);
-		if (grayImage.rows < 1)
-		{
-			ProcessingMessage(QString(" * %1: skip (failed to load image)").arg(setName));
-			ProcessingSetProgressValue(i + 1);
-			continue;
-		}
-
-		// Validate consistent image size across all sets; compute downscale factor on first image.
-		if (imageSize.width == 0)
-		{
-			imageSize = grayImage.size();
-			if (imageSize.width > 1024)
-			{
-				imageScale = cvRound(imageSize.width / 1024.0);
-			}
-		}
-		else if (imageSize != grayImage.size())
-		{
-			ProcessingMessage(QString("ERROR: image of different size: set %1").arg(setName));
-			return false;
-		}
-
-		// Downscale image for faster corner detection; use direct reference if scale is 1.
-		cv::Mat smallImg;
-		if (imageScale > 1)
-		{
-			cv::resize(grayImage, smallImg,
-				cv::Size(grayImage.cols / imageScale, grayImage.rows / imageScale),
-				0, 0, cv::INTER_AREA);
-		}
-		else
-		{
-			smallImg = grayImage;
-		}
-
-		// Check for user cancellation before the expensive detection step.
-		if (ProcessingCanceled())
-		{
-			ProcessingSetCurrentMessage("Extract corners canceled");
-			ProcessingMessage("Extract corners canceled");
-			return false;
-		}
-
-		// Detect chessboard corners on the (possibly downscaled) image.
-		std::vector<cv::Point2f>& camCorners = cornersCamera[i];
-		std::vector<cv::Point3f>& worldCorners = cornersWorld[i];
-
-		if (cv::findChessboardCorners(smallImg, cornerCount, camCorners, detectFlags))
-		{
-			ProcessingMessage(QString(" * %1: found %2 corners").arg(setName).arg(camCorners.size()));
-
-			// Scale corners back to original image resolution.
-			if (imageScale > 1)
-			{
-				for (auto& corner : camCorners)
-				{
-					corner *= static_cast<float>(imageScale);
-				}
-			}
-
-			// Refine corner positions at sub-pixel accuracy on the full-resolution image.
-			cv::cornerSubPix(grayImage, camCorners, cv::Size(11, 11), cv::Size(-1, -1),
-				cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::MAX_ITER, 30, 0.1));
-
-			// Generate planar world coordinates for the detected corners.
-			GetChessboardWorldCoordsV2(worldCorners, cornerCount, cornerSize);
-		}
-		else
-		{
-			// No corners detected for this set.
-			allFound = false;
-			ProcessingMessage(QString(" * %1: chessboard not found!").arg(setName));
-		}
-
-		ProcessingSetProgressValue(i + 1);
-	}
-
-	ProcessingSetCurrentMessage("Extract corners finished");
-	ProcessingSetProgressValue(count);
-	return allFound;
-}
-
-/// <summary>
-/// Generates planar world coordinates for a chessboard pattern assuming Z=0.
-/// </summary>
-/// <param name="worldCorners">Output vector of 3D world points.</param>
-/// <param name="cornerCount">Interior corner grid dimensions (cols x rows).</param>
-/// <param name="cornerSize">Physical size of each square (width x height) in mm.</param>
-/// <remarks>
-/// Improved over GetChessboardWorldCoords: - Accepts cv::Size2f to preserve floating-point precision for non-integer square sizes. - Uses
-/// reserve() and emplace_back() to minimize memory reallocations.
-/// </remarks>
-void Application::GetChessboardWorldCoordsV2(std::vector<cv::Point3f>& worldCorners, cv::Size cornerCount, cv::Size2f cornerSize)
-{
-	worldCorners.reserve(cornerCount.width * cornerCount.height);
-	for (int h = 0; h < cornerCount.height; h++)
-	{
-		for (int w = 0; w < cornerCount.width; w++)
-		{
-			worldCorners.emplace_back(cornerSize.width * w, cornerSize.height * h, 0.f);
-		}
-	}
-}
+/* Views ===================================================================================== */
 
 void Application::MakePatternImages(int level, cv::Mat& colImage, cv::Mat& rowImage)
 {
@@ -1543,7 +934,7 @@ void Application::MakePatternImages(int level, cv::Mat& colImage, cv::Mat& rowIm
 	{   //invalid level
 		return;
 	}
-	if (patternList.size() < static_cast<size_t>(level) || minMaxList.size() < static_cast<size_t>(level))
+	if (patternList.size() <= static_cast<size_t>(level) || minMaxList.size() <= static_cast<size_t>(level))
 	{   //no decoded
 		return;
 	}
@@ -1591,7 +982,7 @@ cv::Mat Application::GetProjectorView(int level, bool forceUpdate)
 	{   //invalid row
 		return cv::Mat();
 	}
-	if (patternList.size() <= static_cast<size_t>(level))
+	if (patternList.size() <= static_cast<size_t>(level) || minMaxList.size() <= static_cast<size_t>(level))
 	{   //not decoded
 		return cv::Mat();
 	}
@@ -1615,6 +1006,79 @@ cv::Mat Application::GetProjectorView(int level, bool forceUpdate)
 	}
 
 	return projector_image;
+}
+
+int Application::SelectedSetCount(void) const
+{
+	int selected = 0;
+	for (int i = 0; i < model.rowCount(); i++)
+	{
+		selected += (model.data(model.index(i, 0), Qt::CheckStateRole).toInt() == Qt::Checked);
+	}
+	return selected;
+}
+
+int Application::CalibratedSetCount(void) const
+{
+	int used = 0;
+	for (char flag : _usedInCalibration)
+	{
+		used += flag ? 1 : 0;
+	}
+	return used;
+}
+
+void Application::UpdateSetStatus(void)
+{
+	// One small dot per state; the tooltip says the same in words.
+	const auto dot = [](const QColor& color)
+	{
+		QPixmap pixmap(12, 12);
+		pixmap.fill(Qt::transparent);
+		QPainter painter(&pixmap);
+		painter.setRenderHint(QPainter::Antialiasing);
+		painter.setPen(Qt::NoPen);
+		painter.setBrush(color);
+		painter.drawEllipse(QRectF(1.5, 1.5, 9, 9));
+		return pixmap;
+	};
+	static const QColor Calibrated(0x3e, 0x89, 0x48), Processed(0x00, 0x52, 0x9d), Problem(0xe4, 0x3b, 0x44);
+
+	for (int i = 0; i < model.rowCount(); i++)
+	{
+		const std::size_t level = static_cast<std::size_t>(i);
+		const QModelIndex index = model.index(i, 0);
+		const bool searched = level < _cornersSearched.size() && _cornersSearched[level];
+		const std::size_t corners = level < cornersCamera.size() ? cornersCamera[level].size() : 0;
+		const bool decoded = level < patternList.size() && !patternList[level].empty();
+		const bool calibrated = level < _usedInCalibration.size() && _usedInCalibration[level];
+
+		QStringList lines;
+		lines << model.data(index, Qt::DisplayRole).toString();
+		lines << (corners ? QString("Chessboard: found (%1 corners)").arg(corners)
+				  : searched ? QString("Chessboard: not found") : QString("Chessboard: not searched yet"));
+		lines << (decoded ? QString("Decoded: yes") : QString("Decoded: no"));
+		if (calibrated)
+		{
+			lines << QString("Used in the last calibration");
+		}
+
+		QVariant icon;
+		if (calibrated)
+		{
+			icon = dot(Calibrated);
+		}
+		else if (searched && !corners)
+		{
+			icon = dot(Problem);
+		}
+		else if (corners || decoded)
+		{
+			icon = dot(Processed);
+		}
+		model.setData(index, icon, Qt::DecorationRole);
+		model.setData(index, lines.join('\n'), Qt::ToolTipRole);
+	}
 }
 
 void Application::SelectNone(void)

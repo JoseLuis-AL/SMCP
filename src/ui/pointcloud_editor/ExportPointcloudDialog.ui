@@ -1,12 +1,18 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>ExportPointcloudDialog</class>
  <widget class="QDialog" name="ExportPointcloudDialog">
+  <property name="minimumSize">
+   <size>
+    <width>420</width>
+    <height>0</height>
+   </size>
+  </property>
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>266</width>
+    <width>384</width>
     <height>143</height>
    </rect>
   </property>
@@ -18,43 +24,64 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="mode_label">
-     <property name="text">
-      <string>Select how the point clouds should be exported:</string>
+    <widget class="QGroupBox" name="description_group">
+     <property name="title">
+      <string>Description</string>
      </property>
+     <layout class="QVBoxLayout" name="description_layout">
+      <item>
+       <widget class="QLabel" name="description_label">
+        <property name="text">
+         <string>Writes the selected visible point clouds as XYZ files (X Y Z R G B per line). Existing files are never overwritten.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <widget class="QRadioButton" name="first_radio">
-     <property name="toolTip">
-      <string>Export only the first point cloud in the list</string>
+    <widget class="QGroupBox" name="section_group">
+     <property name="title">
+      <string>Files</string>
      </property>
-     <property name="text">
-      <string>First point cloud only</string>
-     </property>
-     <property name="checked">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QRadioButton" name="multiple_radio">
-     <property name="toolTip">
-      <string>Export every point cloud to a separate file</string>
-     </property>
-     <property name="text">
-      <string>Each point cloud as a separate file</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QRadioButton" name="combine_radio">
-     <property name="toolTip">
-      <string>Combine all visible point clouds into one file</string>
-     </property>
-     <property name="text">
-      <string>All visible point clouds combined into one file</string>
-     </property>
+     <layout class="QVBoxLayout" name="section_layout">
+      <item>
+       <widget class="QRadioButton" name="first_radio">
+        <property name="toolTip">
+         <string>Export only the selected point cloud</string>
+        </property>
+        <property name="text">
+         <string>Selected point cloud (single selection)</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="multiple_radio">
+        <property name="toolTip">
+         <string>Export every selected visible point cloud to a separate file</string>
+        </property>
+        <property name="text">
+         <string>Each selected point cloud as a separate file</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="combine_radio">
+        <property name="toolTip">
+         <string>Combine all visible point clouds into one file</string>
+        </property>
+        <property name="text">
+         <string>Selected visible point clouds combined into one file</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
@@ -65,7 +92,7 @@
      <property name="sizeHint" stdset="0">
       <size>
        <width>20</width>
-       <height>12</height>
+       <height>0</height>
       </size>
      </property>
     </spacer>
@@ -119,6 +146,6 @@
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>
